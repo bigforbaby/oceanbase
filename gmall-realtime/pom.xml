@@ -128,6 +128,14 @@
         </dependency>
         <!--flink sql 相关依赖-->
 
+        <!--用2.x版本的cdc时候, 和某个jdk版本不兼容. 需要更好jdk-->
+        <dependency>
+            <groupId>com.ververica</groupId>
+            <artifactId>flink-connector-mysql-cdc</artifactId>
+            <!-- The dependency is available only for stable releases, SNAPSHOT dependency need build by yourself. -->
+            <version>2.2.1</version>
+        </dependency>
+
     </dependencies>
 
     <build>
