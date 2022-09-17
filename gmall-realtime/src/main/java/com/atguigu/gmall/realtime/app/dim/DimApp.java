@@ -10,6 +10,7 @@ import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.BroadcastState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -26,6 +27,8 @@ import org.apache.flink.util.Collector;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 
 
@@ -57,13 +60,29 @@ public class DimApp extends BaseAppV1 {
         // 3. 在Phoenix中建表
         tpStream = createDimTable(tpStream);
         // 4. 让数据流和配置进行connect
-        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> resultStream = connect(dataStream, tpStream);
-        resultStream.print();
-        // 5. ...
-        
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream = connect(dataStream, tpStream);
+        // 5. 把数据中不需要的列过滤掉    resultStream 已经存储了所有维度数据
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> resultStream = filterNoNeedColumns(connectedStream);
         // 6. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
         
         
+    }
+    
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream) {
+       return connectedStream
+            .map(new MapFunction<Tuple2<JSONObject, TableProcess>, Tuple2<JSONObject, TableProcess>>() {
+                @Override
+                public Tuple2<JSONObject, TableProcess> map(Tuple2<JSONObject, TableProcess> t) throws Exception {
+                    JSONObject data = t.f0;
+                    // 把需要的所有的列放入到集合中, 放进行判断
+                    List<String> columns = Arrays.asList(t.f1.getSinkColumns().split(","));
+                    
+                    // 遍历map集合, 删除不需要的列, op要保留
+                    data.keySet().removeIf(key -> !columns.contains(key) && !"op".equals(key));
+                    
+                    return t;
+                }
+            });
     }
     
     private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(
