@@ -61,7 +61,7 @@ public class DimApp extends BaseAppV1 {
         resultStream.print();
         // 5. ...
         
-        // 5. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
+        // 6. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
         
         
     }
