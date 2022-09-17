@@ -39,15 +39,32 @@ public class PhoenixSink extends RichSinkFunction<Tuple2<JSONObject, TableProces
         TableProcess tp = t.f1;
         
         //TODO
+        // upsert into t(a,b,c)values(?,?,?)
         StringBuilder sql = new StringBuilder();
-        
+        sql
+            .append("upsert into ")
+            .append(tp.getSinkTable())
+            .append("(")
+            // 拼接字段
+            .append(tp.getSinkColumns())
+            .append(")values(")
+            // 拼接占位符  id,tm_name
+            .append(tp.getSinkColumns().replaceAll("[^,]+", "?"))
+            .append(")");
         // 1. 从连接池获取连接对象
         DruidPooledConnection conn = dataSource.getConnection();
     
         // 2. 通过连接对象得到一个预处理语句
         PreparedStatement ps = conn.prepareStatement(sql.toString());
         // 3. 对sql中的占位符赋值 TODO
-        
+        //upsert into t(a,b,c)values(?,?,?)
+        String[] columns = tp.getSinkColumns().split(",");
+        for (int i = 0; i < columns.length; i++) {
+            String columnName = columns[i];
+            // 需要做非空判断: 如果是null, 就写入null, 否则就写入自己
+            ps.setString(i + 1, data.get(columnName) == null ? null : data.get(columnName).toString());
+        }
+    
         // 4. 执行预处理语句
         ps.execute();
         // 5. 提交
