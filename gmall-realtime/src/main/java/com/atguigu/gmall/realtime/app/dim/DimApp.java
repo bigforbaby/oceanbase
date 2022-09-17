@@ -71,10 +71,25 @@ public class DimApp extends BaseAppV1 {
       return  env
             .fromSource(mySqlSource, WatermarkStrategy.noWatermarks(), "mysql cdc source")
             .flatMap(new FlatMapFunction<String, TableProcess>() {
+                /*
+                关于对配置表进行修改的时候, 数据特点:
+                1. 新增数据:  before = null after=新增的值  op=c
+                2. 删除数据   before =删除之前的值 after=null op=d
+                3. 更新数据
+                        更新主键: 有两条数据
+                            先删除原数据
+                                before = 有值 after=null op=d
+                            再新增
+                                before = null after=有值  op=c
+                        更新非主键: 只有一条数据
+                                before=更新前的值 after是更新后的值  op=u
+                                
+                 4. 读取快照的时候:
+                      before =null  after=值  op=r
+                 */
                 @Override
                 public void flatMap(String value,
                                     Collector<TableProcess> out) throws Exception {
-                
                     JSONObject obj = JSON.parseObject(value);
                     String op = obj.getString("op");
                     if ("d".equals(op)) {
@@ -84,9 +99,7 @@ public class DimApp extends BaseAppV1 {
                         // 把op封装到对象中的目的是为了后期能够判断出这次是什么操作: 删除or新增
                         tp.setOp(op);
                         out.collect(tp);
-                    } else if ("c".equals(op) || "r".equals(op)) {
-                        // 启动的时候读取的是快照数据 op=r
-                        // 当新增或者update的时候, 我只需要取出变化后的配置信息 op=c
+                    } else {   //r u c
                         TableProcess tp = obj.getObject("after", TableProcess.class);
                         tp.setOp(op);
                         out.collect(tp);
