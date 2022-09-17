@@ -9,6 +9,7 @@ import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -41,13 +42,37 @@ public class DimApp extends BaseAppV1 {
         SingleOutputStreamOperator<JSONObject> dataStream = elt(stream);
         // 2. 读取维度的配置信息(使用flink cdc)
         SingleOutputStreamOperator<TableProcess> tpStream = readTableProcess(env);
-        tpStream.print();
+        // 3. 在Phoenix中建表
+        tpStream = createDimTable(tpStream);
     
-        // 3. 让数据流和配置进行connect
+    
+        // 4. 让数据流和配置进行connect
         
         
-        // 4. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
+        // 5. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
         
+        
+    }
+    
+    private SingleOutputStreamOperator<TableProcess> createDimTable(SingleOutputStreamOperator<TableProcess> tpStream) {
+        /*
+        根据传来的数据进行建表
+        每来一条数据建一张表 ?
+            r 读取快照 (建表)
+            u 更新 (是否需要对表做操作?  先删表, 再建表. 需要把维度重新同步)
+            d 删除 (删除表)
+            c 新增 (建表)
+        
+         */
+        
+       return tpStream.map(new MapFunction<TableProcess, TableProcess>() {
+            @Override
+            public TableProcess map(TableProcess tp) throws Exception {
+                // 删表和建表
+                
+                return tp;
+            }
+        });
         
     }
     
