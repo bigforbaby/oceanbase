@@ -5,16 +5,19 @@ import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.JdbcUtil;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.Collector;
 
+import java.sql.Connection;
 import java.util.Properties;
 
 /**
@@ -65,14 +68,48 @@ public class DimApp extends BaseAppV1 {
         
          */
         
-       return tpStream.map(new MapFunction<TableProcess, TableProcess>() {
-            @Override
+       return tpStream.map(new RichMapFunction<TableProcess, TableProcess>() {
+    
+           private Connection conn;
+    
+           @Override
+           public void open(Configuration parameters) throws Exception {
+               // 建立连接
+               conn = JdbcUtil.getPhoenixConnection();
+           }
+    
+           @Override
+           public void close() throws Exception {
+               // 关闭连接
+               JdbcUtil.closeConnection(conn);
+           }
+    
+           @Override
             public TableProcess map(TableProcess tp) throws Exception {
                 // 删表和建表
-                
-                return tp;
+               String op = tp.getOp();
+               if ("c".equals(op) || "r".equals(op)) {
+                   createTable(tp);
+               }else if("d".equals(op)){
+                   dropTable(tp);
+               }else { // u
+                   dropTable(tp);
+                   createTable(tp);
+               }
+               return tp;
             }
-        });
+    
+            // 根据配置在Phoenix中建表
+           // TODO
+           private void createTable(TableProcess tp) {
+           
+           }
+    
+           // 根据配置信息在Phoenix中删除表
+           //TODO
+           private void dropTable(TableProcess tp) {
+           }
+       });
         
     }
     
