@@ -11,16 +11,23 @@ import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.state.BroadcastState;
+import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.ReadOnlyBroadcastState;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.util.Collector;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Properties;
+
 
 /**
  * @Author lzc
@@ -49,13 +56,62 @@ public class DimApp extends BaseAppV1 {
         SingleOutputStreamOperator<TableProcess> tpStream = readTableProcess(env);
         // 3. 在Phoenix中建表
         tpStream = createDimTable(tpStream);
-        tpStream.print();
-        
-        
         // 4. 让数据流和配置进行connect
-        
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> resultStream = connect(dataStream, tpStream);
+        resultStream.print();
+        // 5. ...
         
         // 5. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
+        
+        
+    }
+    
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(
+        SingleOutputStreamOperator<JSONObject> dataStream,
+        SingleOutputStreamOperator<TableProcess> tpStream) {
+        // 1. 先把配置里做成广播流
+        // key: mysql中表名 sourceTable
+        // value: TableProcess
+        
+        MapStateDescriptor<String, TableProcess> tpStateDesc = new MapStateDescriptor<>("tpState", String.class, TableProcess.class);
+        BroadcastStream<TableProcess> tpBcStream = tpStream.broadcast(tpStateDesc);
+        // 2. 让数据流去connect 广播流
+        return dataStream
+            .connect(tpBcStream)
+            // 输出就是每个维度数据配一个配置信息
+            .process(new BroadcastProcessFunction<JSONObject, TableProcess, Tuple2<JSONObject, TableProcess>>() {
+                @Override
+                public void processElement(JSONObject value,
+                                           ReadOnlyContext ctx,
+                                           Collector<Tuple2<JSONObject, TableProcess>> out) throws Exception {
+                    // 4. 处理数据流中的数据: 从广播状态读取配置信息, 和数据流组合在一起, 交个后序的流进行写出
+                    // 来了一条数据: sku_info的数据, 要找到对应的配置信息
+                    
+                    ReadOnlyBroadcastState<String, TableProcess> state = ctx.getBroadcastState(tpStateDesc);
+                    // 1. 先根据mysql的表名获取对应你的配置信息
+                    String key = value.getString("table");
+                    
+                    TableProcess tp = state.get(key);// tp后坑是null: 当数据是事实表数据的时候
+                    // 2. 把数据和配置信息组成有元组返回
+                    if (tp != null) {
+                        // 向外输出的时候, 只需要data数据即可, 其他的一些元数据, 不需要了
+                        JSONObject data = value.getJSONObject("data");
+                        // 给data中新增一个字段: op表示这条数据是更新还是新增. 后期有用
+                        data.put("op", value.getString("type"));
+                        out.collect(Tuple2.of(data, tp));
+                    }
+                }
+                
+                @Override
+                public void processBroadcastElement(TableProcess tp,
+                                                    Context ctx,
+                                                    Collector<Tuple2<JSONObject, TableProcess>> out) throws Exception {
+                    // 3. 把配置信息放入到广播状态
+                    BroadcastState<String, TableProcess> state = ctx.getBroadcastState(tpStateDesc);
+                    String key = tp.getSourceTable();// mysql中的表名. 前面别写成sinkTable
+                    state.put(key, tp);
+                }
+            });
         
         
     }
@@ -121,7 +177,7 @@ public class DimApp extends BaseAppV1 {
             )
              */
                 // 本质就是执行一个建议语句  表一定要添加主键! 因为主键会成为hbase中的rowkey
-                // create table if not exists t(id varchar, name varchar , constraint pk primary key(id));
+                // create table if not exists t(id varchar, name varchar , constraint pk primary key(id)) SALT_BUCKETS = 4;
                 StringBuilder sql = new StringBuilder();
                 sql
                     .append("create table if not exists ")
@@ -131,7 +187,9 @@ public class DimApp extends BaseAppV1 {
                     .append(", constraint pk primary key(")
                     // 每张维度表都有一个id, 如果没有提供主键,则用这个id作为主键
                     .append(tp.getSinkPk() == null ? "id" : tp.getSinkPk())
-                    .append("))");
+                    .append("))")
+                    // 创建盐表(预分区表)
+                    .append(tp.getSinkExtend() == null ? "" : tp.getSinkExtend());
                 System.out.println("维度表建表语句: " + sql);
                 // 1. 使用conn 根据sql语句得到一个预处理语句
                 PreparedStatement ps = conn.prepareStatement(sql.toString());
@@ -144,7 +202,6 @@ public class DimApp extends BaseAppV1 {
                 // 5. 关闭预处理语句
                 ps.close();
                 
-                
             }
             
             // 根据配置信息在Phoenix中删除表
@@ -153,7 +210,7 @@ public class DimApp extends BaseAppV1 {
                 
                 // drop table t;
                 String sql = "drop table " + tp.getSinkTable();
-               
+                
                 System.out.println("维度删表语句: " + sql);
                 // 1. 使用conn 根据sql语句得到一个预处理语句
                 PreparedStatement ps = conn.prepareStatement(sql);
@@ -258,6 +315,45 @@ public class DimApp extends BaseAppV1 {
     }
 }
 /*
+------
+ SALT_BUCKETS = 4
+ 建盐表 / 给表加盐
+ hbase:
+    RegionServer 存储 Region
+    
+    建表的时候, 默认只有一个Region
+    
+    随着数据规模的增长, Region也会增长
+    当Region增长到一定程度之后, 会自动分裂
+    
+    一分为二
+        分裂算法:
+            固定大小  10G
+            
+            新的算法:
+                region^3*256 分裂
+    
+    hadoop162
+        1  -> 2
+        
+    同一张表的Region分裂之后, 会自动迁移. 一般在集群不太忙的时候, 后天迁移
+    
+    hbase为了避免region的分裂和迁移, 提供了一个预分区功能. 以后就不会自动分裂
+    
+    每个分区都有一个rowkey的范围
+    
+      a  b  c
+      
+---------------
+
+Phoenix建表, 怎么建预分区表?
+
+盐表
+ 
+
+
+
+---------
 维度数据的特点:
     变化比较慢 缓慢变化维度
     
