@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
 import com.atguigu.gmall.realtime.util.JdbcUtil;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
@@ -64,12 +65,28 @@ public class DimApp extends BaseAppV1 {
         // 5. 把数据中不需要的列过滤掉    resultStream 已经存储了所有维度数据
         SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> resultStream = filterNoNeedColumns(connectedStream);
         // 6. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
+        writeToPhoenix(resultStream);
         
         
     }
     
-    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream) {
-       return connectedStream
+    private void writeToPhoenix(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> stream) {
+        /*
+        把流中的数据写出到Phoenix中
+        1. 找一个Phoenix连接器. 很不幸, 目前没有Phoenix专用连接器
+        2. 能否使用jdbc sink?
+            JdbcSink.sink( sql语句,  给sql中的占位符赋值,  执行参数, 连接参数)
+            sql语句是固定, 那么就意味着只能把流中的数据写入到一个表中
+            
+            实际上, 我们这个流中有多个维度表的数据, 所以不能使用jdbc sink
+        3. 自定义sink
+         */
+        stream.addSink(FlinkSinkUtil.getPhoenixSink());
+    }
+    
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream) {
+        return connectedStream
             .map(new MapFunction<Tuple2<JSONObject, TableProcess>, Tuple2<JSONObject, TableProcess>>() {
                 @Override
                 public Tuple2<JSONObject, TableProcess> map(Tuple2<JSONObject, TableProcess> t) throws Exception {
@@ -183,6 +200,10 @@ public class DimApp extends BaseAppV1 {
             // 根据配置在Phoenix中建表
             // TODO
             private void createTable(TableProcess tp) throws SQLException {
+    
+                if (conn.isClosed()) {
+                    conn = JdbcUtil.getPhoenixConnection();
+                }
             /*
             TableProcess(
                 sourceTable=activity_rule
@@ -226,6 +247,9 @@ public class DimApp extends BaseAppV1 {
             // 根据配置信息在Phoenix中删除表
             //TODO
             private void dropTable(TableProcess tp) throws SQLException {
+                if (conn.isClosed()) {
+                    conn = JdbcUtil.getPhoenixConnection();
+                }
                 
                 // drop table t;
                 String sql = "drop table " + tp.getSinkTable();
