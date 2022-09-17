@@ -18,6 +18,8 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.Collector;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Properties;
 
 /**
@@ -47,8 +49,9 @@ public class DimApp extends BaseAppV1 {
         SingleOutputStreamOperator<TableProcess> tpStream = readTableProcess(env);
         // 3. 在Phoenix中建表
         tpStream = createDimTable(tpStream);
-    
-    
+        tpStream.print();
+        
+        
         // 4. 让数据流和配置进行connect
         
         
@@ -68,55 +71,108 @@ public class DimApp extends BaseAppV1 {
         
          */
         
-       return tpStream.map(new RichMapFunction<TableProcess, TableProcess>() {
-    
-           private Connection conn;
-    
-           @Override
-           public void open(Configuration parameters) throws Exception {
-               // 建立连接
-               conn = JdbcUtil.getPhoenixConnection();
-           }
-    
-           @Override
-           public void close() throws Exception {
-               // 关闭连接
-               JdbcUtil.closeConnection(conn);
-           }
-    
-           @Override
+        return tpStream.map(new RichMapFunction<TableProcess, TableProcess>() {
+            
+            private Connection conn;
+            
+            @Override
+            public void open(Configuration parameters) throws Exception {
+                // 建立连接
+                conn = JdbcUtil.getPhoenixConnection();
+            }
+            
+            @Override
+            public void close() throws Exception {
+                // 关闭连接
+                JdbcUtil.closeConnection(conn);
+            }
+            
+            @Override
             public TableProcess map(TableProcess tp) throws Exception {
                 // 删表和建表
-               String op = tp.getOp();
-               if ("c".equals(op) || "r".equals(op)) {
-                   createTable(tp);
-               }else if("d".equals(op)){
-                   dropTable(tp);
-               }else { // u
-                   dropTable(tp);
-                   createTable(tp);
-               }
-               return tp;
+                String sinkType = tp.getSinkType();
+                String op = tp.getOp();
+                if ("dim".equals(sinkType)) {
+                    if ("c".equals(op) || "r".equals(op)) {
+                        createTable(tp);
+                    } else if ("d".equals(op)) {
+                        dropTable(tp);
+                    } else { // u
+                        dropTable(tp);
+                        createTable(tp);
+                    }
+                }
+                return tp;
             }
-    
+            
             // 根据配置在Phoenix中建表
-           // TODO
-           private void createTable(TableProcess tp) {
-           
-           }
-    
-           // 根据配置信息在Phoenix中删除表
-           //TODO
-           private void dropTable(TableProcess tp) {
-           }
-       });
+            // TODO
+            private void createTable(TableProcess tp) throws SQLException {
+            /*
+            TableProcess(
+                sourceTable=activity_rule
+                sourceType=ALL
+                sinkTable=dim_activity_rule
+                sinkType=dim
+                sinkColumns=id,activity_id,activity_type
+                sinkPk=id
+                sinkExtend=null
+                op=r
+            )
+             */
+                // 本质就是执行一个建议语句  表一定要添加主键! 因为主键会成为hbase中的rowkey
+                // create table if not exists t(id varchar, name varchar , constraint pk primary key(id));
+                StringBuilder sql = new StringBuilder();
+                sql
+                    .append("create table if not exists ")
+                    .append(tp.getSinkTable())
+                    .append("(")
+                    .append(tp.getSinkColumns().replaceAll("[^,]+", "$0 varchar"))
+                    .append(", constraint pk primary key(")
+                    // 每张维度表都有一个id, 如果没有提供主键,则用这个id作为主键
+                    .append(tp.getSinkPk() == null ? "id" : tp.getSinkPk())
+                    .append("))");
+                System.out.println("维度表建表语句: " + sql);
+                // 1. 使用conn 根据sql语句得到一个预处理语句
+                PreparedStatement ps = conn.prepareStatement(sql.toString());
+                // 2. 给sql中的占位符进行赋值(建表语句一般没有占位符)
+                // 略
+                // 3. 执行
+                ps.execute();
+                // 4. 提交
+                conn.commit();
+                // 5. 关闭预处理语句
+                ps.close();
+                
+                
+            }
+            
+            // 根据配置信息在Phoenix中删除表
+            //TODO
+            private void dropTable(TableProcess tp) throws SQLException {
+                
+                // drop table t;
+                String sql = "drop table " + tp.getSinkTable();
+               
+                System.out.println("维度删表语句: " + sql);
+                // 1. 使用conn 根据sql语句得到一个预处理语句
+                PreparedStatement ps = conn.prepareStatement(sql);
+                // 3. 执行
+                ps.execute();
+                // 4. 提交
+                conn.commit();
+                // 5. 关闭预处理语句
+                ps.close();
+                
+            }
+        });
         
     }
     
     private SingleOutputStreamOperator<TableProcess> readTableProcess(StreamExecutionEnvironment env) {
         // 实时的读取配置表的数据
         // 用到cdc方案
-        Properties props =  new Properties();
+        Properties props = new Properties();
         props.setProperty("useSSL", "false");
         // 一启动默认先读取表中所有数据(快照), 然后再监控binlog读取变化的数据
         MySqlSource<String> mySqlSource = MySqlSource.<String>builder()
@@ -129,8 +185,8 @@ public class DimApp extends BaseAppV1 {
             .jdbcProperties(props) // 解决ssl报错的问题
             .deserializer(new JsonDebeziumDeserializationSchema()) // converts SourceRecord to JSON String
             .build();
-    
-      return  env
+        
+        return env
             .fromSource(mySqlSource, WatermarkStrategy.noWatermarks(), "mysql cdc source")
             .flatMap(new FlatMapFunction<String, TableProcess>() {
                 /*
@@ -168,8 +224,8 @@ public class DimApp extends BaseAppV1 {
                     }
                 }
             });
-            
-            // 流中的数据有两种: 删除 新增 (更新是分解成了删除和更新)
+        
+        // 流中的数据有两种: 删除 新增 (更新是分解成了删除和更新)
         
     }
     
@@ -197,7 +253,7 @@ public class DimApp extends BaseAppV1 {
             })
             // 把type中的bootstrap-insert换成insert
             .map(jsonString -> JSON.parseObject(jsonString.replaceAll("bootstrap-", "")));
-            
+        
         
     }
 }
@@ -270,4 +326,13 @@ public class DimApp extends BaseAppV1 {
 把维度数据写得出到phoenix中
      自定义phoenix sink
  
+ 
+ 错误:
+Inconsistent namespace mapping properties. Cannot initiate connection as SYSTEM:CATALOG is found but client does not have phoenix.schema.isNamespaceMappingEnabled enabled
+
+数据库中有 database的概念, 所以Phoenix也有database的概念
+hbase中没有database概念, 但是它你有个概念叫 命名空间 namespace, 就等价于数据库的 database
+
+所以说, 如果想要在Phoenix中使用database, 则需要把database和namespace做映射.
+
  */
