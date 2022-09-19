@@ -79,6 +79,7 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
             .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_PAGE));
         
         
+        
     }
     
     private Map<String, DataStream<JSONObject>> splitStream(SingleOutputStreamOperator<JSONObject> validatedStream) {
