@@ -2,10 +2,12 @@ package com.atguigu.gmall.realtime.app.dwd.log;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONAware;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.ValueState;
@@ -50,13 +52,32 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
         SingleOutputStreamOperator<JSONObject> validatedStream = validateNewOrOld(etledStream);
         // 3. 分流
         Map<String, DataStream<JSONObject>> streams = splitStream(validatedStream);
-        streams.get(START).print("start");
-        streams.get(ERR).print("ERR");
-        streams.get(ACTION).print("ACTION");
-        streams.get(PAGE).print("PAGE");
-        streams.get(DISPLAY).print("DISPLAY");
-    
         // 4. 不同的流的数据写入到不同的topic中
+        writeToKafka(streams);
+        
+    }
+    
+    private void writeToKafka(Map<String, DataStream<JSONObject>> streams) {
+        streams.get(START)
+            .map(JSONAware::toJSONString)
+            .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_START));
+        
+        streams.get(DISPLAY)
+            .map(JSONAware::toJSONString)
+            .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_DISPLAY));
+        
+        streams.get(ACTION)
+            .map(JSONAware::toJSONString)
+            .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_ACTION));
+        
+        streams.get(ERR)
+            .map(JSONAware::toJSONString)
+            .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_ERR));
+        
+        streams.get(PAGE)
+            .map(JSONAware::toJSONString)
+            .addSink(FlinkSinkUtil.getKafkaSink(Constant.TOPIC_DWD_TRAFFIC_PAGE));
+        
         
     }
     
