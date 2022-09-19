@@ -28,7 +28,6 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
                           DataStreamSource<String> stream) {
         // 1. 对数据做清洗
         SingleOutputStreamOperator<JSONObject> etledStream = etl(stream);
-    
         // 2. 纠正新老客户
         
         // 3. 分流
