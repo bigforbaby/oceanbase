@@ -1,6 +1,7 @@
 package com.atguigu.gmall.realtime.app.dwd.log;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.common.Constant;
@@ -10,15 +11,27 @@ import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @Author lzc
  * @Date 2022/9/19 8:53
  */
 public class Dwd_01_BaseLogApp extends BaseAppV1 {
+    private final String PAGE = "page";
+    private final String DISPLAY = "display";
+    private final String ERR = "err";
+    private final String ACTION = "action";
+    private final String START = "start";
     public static void main(String[] args) {
         new Dwd_01_BaseLogApp().init(
             3001,
@@ -34,10 +47,109 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
         // 1. 对数据做清洗
         SingleOutputStreamOperator<JSONObject> etledStream = etl(stream);
         // 2. 纠正新老客户
-        validateNewOrOld(etledStream).print();
+        SingleOutputStreamOperator<JSONObject> validatedStream = validateNewOrOld(etledStream);
         // 3. 分流
-        
+        Map<String, DataStream<JSONObject>> streams = splitStream(validatedStream);
+        streams.get(START).print("start");
+        streams.get(ERR).print("ERR");
+        streams.get(ACTION).print("ACTION");
+        streams.get(PAGE).print("PAGE");
+        streams.get(DISPLAY).print("DISPLAY");
+    
         // 4. 不同的流的数据写入到不同的topic中
+        
+    }
+    
+    private Map<String, DataStream<JSONObject>> splitStream(SingleOutputStreamOperator<JSONObject> validatedStream) {
+        /*
+        一共5种日志, 分5个流
+        侧输出流
+        
+        启动   主流
+        曝光    侧输出流
+        活动   侧输出流
+        页面   侧输出流
+        错误   侧输出流
+         */
+        OutputTag<JSONObject> displayTag = new OutputTag<JSONObject>("display") {};
+        OutputTag<JSONObject> actionTag = new OutputTag<JSONObject>("action") {};
+        OutputTag<JSONObject> errTag = new OutputTag<JSONObject>("err") {};
+        OutputTag<JSONObject> pageTag = new OutputTag<JSONObject>("page") {};
+        
+        SingleOutputStreamOperator<JSONObject> startStream = validatedStream
+            .process(new ProcessFunction<JSONObject, JSONObject>() {
+                @Override
+                public void processElement(JSONObject obj,
+                                           Context ctx,
+                                           Collector<JSONObject> out) throws Exception {
+                    JSONObject common = obj.getJSONObject("common");
+                    JSONObject page = obj.getJSONObject("page");
+                    Long ts = obj.getLong("ts");
+                    
+                    // 1. 先判断时候为启动日志
+                    JSONObject start = obj.getJSONObject("start");
+                    if (start != null) {
+                        // 启动日志
+                        out.collect(obj);
+                    } else {
+                        // 其他日志和启动日志是互斥
+                        // 曝光 活动 err page
+                        // 2. 曝光
+                        JSONArray displays = obj.getJSONArray("displays");
+                        if (displays != null) {
+                            //一条数据中, 有可能多个曝光, 最好一个曝光一条数据
+                            for (int i = 0; i < displays.size(); i++) {
+                                JSONObject display = displays.getJSONObject(i);
+                                display.putAll(common); // common中的的kv直接添加到了display中
+                                display.putAll(page);
+                                display.put("ts", ts);
+                                ctx.output(displayTag, display);
+                            }
+                            // 但display的数据用完之后, 删除. 后面用不到
+                            obj.remove("displays");
+                        }
+                        // 3. 活动
+                        JSONArray actions = obj.getJSONArray("actions");
+                        if (actions != null) {
+                            for (int i = 0; i < actions.size(); i++) {
+                                JSONObject action = actions.getJSONObject(i);
+                                action.putAll(common); // common中的的kv直接添加到了action中
+                                action.putAll(page);
+                                // action有自己的ts, 所以不需要外面的ts
+                                //action.put("ts", ts);
+                                ctx.output(actionTag, action);
+                            }
+                            // 但action的数据用完之后, 删除. 后面用不到
+                            obj.remove("actions");
+                        }
+                        
+                        // 3. 错误
+                        JSONObject err = obj.getJSONObject("err");
+                        if (err != null) {
+                            ctx.output(errTag, obj);
+                            obj.remove("err");
+                        }
+                        // 4. page
+                        ctx.output(pageTag, obj);
+                    }
+                    
+                    
+                }
+            });
+        DataStream<JSONObject> displayStream = startStream.getSideOutput(displayTag);
+        DataStream<JSONObject> actionStream = startStream.getSideOutput(actionTag);
+        DataStream<JSONObject> errStream = startStream.getSideOutput(errTag);
+        DataStream<JSONObject> pageStream = startStream.getSideOutput(pageTag);
+        
+        // 返回什么?
+        Map<String, DataStream<JSONObject>> streams = new HashMap<String, DataStream<JSONObject>>();
+        streams.put(PAGE, pageStream);
+        streams.put(ACTION, actionStream);
+        streams.put(DISPLAY, displayStream);
+        streams.put(ERR, errStream);
+        streams.put(START, startStream);
+        return streams;
+    
     }
     
     private SingleOutputStreamOperator<JSONObject> validateNewOrOld(
@@ -68,13 +180,13 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
                             // 这个用户没有状态, 并且标记还是行用户, 这这个用户应该是第一天的第一次访问
                             // 状态中就存储今天. 更新hi下状态
                             firstVisitDateState.update(today);
-                        }else{
+                        } else {
                             // 用户是老用户, 但是没有状态. 为了防止以后有问题, 把状态更新成昨天
                             String yesterday = AtguiguUtil.toDate(ts - 24 * 60 * 60 * 1000);
                             firstVisitDateState.update(yesterday);
                         }
-                    }else{
-                        if ("1".equals(isNew) && !today.equals(firstVisitDate)){
+                    } else {
+                        if ("1".equals(isNew) && !today.equals(firstVisitDate)) {
                             // 状态不为空, 并且今天还和状态不一样, 需要对is_new纠正
                             common.put("is_new", "0");
                         }
@@ -102,6 +214,7 @@ public class Dwd_01_BaseLogApp extends BaseAppV1 {
                 }
             })
             .map(JSON::parseObject);
+        
     }
 }
 /*
