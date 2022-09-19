@@ -78,6 +78,7 @@ public class DimApp extends BaseAppV1 {
             JdbcSink.sink( sql语句,  给sql中的占位符赋值,  执行参数, 连接参数)
             sql语句是固定, 那么就意味着只能把流中的数据写入到一个表中
             
+            
             实际上, 我们这个流中有多个维度表的数据, 所以不能使用jdbc sink
         3. 自定义sink
          */
