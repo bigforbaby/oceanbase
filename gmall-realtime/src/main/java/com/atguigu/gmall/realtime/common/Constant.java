@@ -10,5 +10,10 @@ public class Constant {
     public static final String TOPIC_ODS_DB = "ods_db";
     public static final String TOPIC_ODS_LOG = "ods_log";
     public static final String PHOENIX_DRIVER = "org.apache.phoenix.jdbc.PhoenixDriver";
-    public static final String PHOENIX_URL = "jdbc:phoenix:hadoop162,hadoop163,hadoop164:2181";
+    public static final String PHOENIX_URL = "jdbc:phoenix:hadoop162,hadoop163,hadoop164:2181?useUnicode=true&characterEncoding=utf8";
+    public static final String TOPIC_DWD_TRAFFIC_START = "dwd_traffic_start";
+    public static final String TOPIC_DWD_TRAFFIC_DISPLAY = "dwd_traffic_display";
+    public static final String TOPIC_DWD_TRAFFIC_ACTION = "dwd_traffic_action";
+    public static final String TOPIC_DWD_TRAFFIC_ERR = "dwd_traffic_err";
+    public static final String TOPIC_DWD_TRAFFIC_PAGE = "dwd_traffic_page";
 }

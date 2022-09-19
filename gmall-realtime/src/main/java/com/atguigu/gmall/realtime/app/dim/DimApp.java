@@ -34,8 +34,8 @@ import java.util.Properties;
 
 
 /**
- * @Author lzc
- * @Date 2022/9/16 11:28
+ * &#064;Author  lzc
+ * &#064;Date  2022/9/16 11:28
  */
 public class DimApp extends BaseAppV1 {
     public static void main(String[] args) {
@@ -77,6 +77,7 @@ public class DimApp extends BaseAppV1 {
         2. 能否使用jdbc sink?
             JdbcSink.sink( sql语句,  给sql中的占位符赋值,  执行参数, 连接参数)
             sql语句是固定, 那么就意味着只能把流中的数据写入到一个表中
+            
             
             实际上, 我们这个流中有多个维度表的数据, 所以不能使用jdbc sink
         3. 自定义sink
@@ -200,7 +201,7 @@ public class DimApp extends BaseAppV1 {
             // 根据配置在Phoenix中建表
             // TODO
             private void createTable(TableProcess tp) throws SQLException {
-    
+                
                 if (conn.isClosed()) {
                     conn = JdbcUtil.getPhoenixConnection();
                 }
