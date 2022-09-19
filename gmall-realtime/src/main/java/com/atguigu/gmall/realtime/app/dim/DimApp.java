@@ -34,8 +34,8 @@ import java.util.Properties;
 
 
 /**
- * @Author lzc
- * @Date 2022/9/16 11:28
+ * &#064;Author  lzc
+ * &#064;Date  2022/9/16 11:28
  */
 public class DimApp extends BaseAppV1 {
     public static void main(String[] args) {
@@ -200,7 +200,7 @@ public class DimApp extends BaseAppV1 {
             // 根据配置在Phoenix中建表
             // TODO
             private void createTable(TableProcess tp) throws SQLException {
-    
+                
                 if (conn.isClosed()) {
                     conn = JdbcUtil.getPhoenixConnection();
                 }
