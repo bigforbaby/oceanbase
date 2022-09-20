@@ -53,7 +53,6 @@ public class DimApp extends BaseAppV1 {
     protected void handle(StreamExecutionEnvironment env,
                           DataStreamSource<String> stream) {
         // 对流进行业务处理
-        
         // 1. 对维度数据(ods_db)做etl: 数据清洗
         SingleOutputStreamOperator<JSONObject> dataStream = elt(stream);
         // 2. 读取维度的配置信息(使用flink cdc)
