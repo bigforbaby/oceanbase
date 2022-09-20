@@ -65,8 +65,6 @@ public class DimApp extends BaseAppV1 {
         SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> resultStream = filterNoNeedColumns(connectedStream);
         // 6. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
         writeToPhoenix(resultStream);
-        
-        
     }
     
     private void writeToPhoenix(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> stream) {
