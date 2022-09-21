@@ -16,4 +16,5 @@ public class Constant {
     public static final String TOPIC_DWD_TRAFFIC_ACTION = "dwd_traffic_action";
     public static final String TOPIC_DWD_TRAFFIC_ERR = "dwd_traffic_err";
     public static final String TOPIC_DWD_TRAFFIC_PAGE = "dwd_traffic_page";
+    public static final String TOPIC_DWD_TRADE_CART_ADD = "dwd_trade_cart_add";
 }

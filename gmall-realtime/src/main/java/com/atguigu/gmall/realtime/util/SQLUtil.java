@@ -17,4 +17,13 @@ public class SQLUtil {
             "'scan.startup.mode' = 'latest-offset' " +
             ")";
     }
+    
+    public static String getKafkaSinkSQL(String topic) {
+        return "with(" +
+            "'connector' = 'kafka', " +
+            "'properties.bootstrap.servers' = '" + Constant.KAFKA_BROKERS + "', " +
+            "'topic' = '" + topic + "', " +
+            "'format' = 'json' " +
+            ")";
+    }
 }

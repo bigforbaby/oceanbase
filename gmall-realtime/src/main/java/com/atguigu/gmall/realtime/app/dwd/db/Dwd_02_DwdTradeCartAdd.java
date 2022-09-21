@@ -1,6 +1,8 @@
 package com.atguigu.gmall.realtime.app.dwd.db;
 
 import com.atguigu.gmall.realtime.app.BaseSQLApp;
+import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.SQLUtil;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -24,70 +26,65 @@ public class Dwd_02_DwdTradeCartAdd extends BaseSQLApp {
         // 1. 读取ods_db数据
         readOdsDb(tEnv, "Dwd_02_DwdTradeCartAdd");
         // 2. 过滤其中的 加购数据
-        /*
-        {
-            "database": "gmall2022",
-                "table": "cart_info",
-                "type": "update",
-                "ts": 1652685209,
-                "xid": 30880,
-                "xoffset": 3169,
-                "data": {
-            
-            },
-            "old": {
-                "is_ordered": 0,
-                    "order_time": null
-            }
-            
-            "id": 33264,
-            "user_id": "1595",
-            "sku_id": 5,
-            "cart_price": 999.00,
-            "sku_num": 3,
-            "img_url": "http://47.93.14805.jpg",
-            "sku_name": "Redmi 10X 4 米 红米",
-            "is_checked": null,
-            "create_time": "2022-09-19 07:13:29",
-            "operate_time": null,
-            "is_ordered": 1,
-            "order_time": "2022-09-19 07:13:30",
-            "source_type": "2402",
-            "source_id": 88
-        }
-         */
         // empty set
         // 对更新来说,我们只关注 sku_num 变大的
         Table cartInfo = tEnv.sqlQuery("select " +
-                                        " `data`['id'] id, " +
-                                        " `data`['user_id'] user_id, " +
-                                        " `data`['sku_id'] sku_id, " +
-                                        " `data`['source_id'] source_id, " +
-                                        " `data`['source_type'] source_type, " +
-                                        // 如果是insert直接取, 如果update 取与old差值
-                                        " if(`type`='insert', " +
-                                        "  `data`['sku_num'], " +
-                                        "   cast(cast(`data`['sku_num'] as int) - cast(`old`['sku_num'] as int) as string)" +
-                                        " ) sku_num, " +
-                                        " ts " +
-                                        "from ods_db " +
-                                        "where `database`='gmall2022' " +
-                                        "and `table`='cart_info' " +
-                                        "and (`type`='insert'  " +
-                                        "  or " +
-                                        " (`type`='update' " +
-                                        "     and `old`['sku_num'] is not null " +
-                                        "     and cast(`data`['sku_num'] as int) > cast(`old`['sku_num'] as int)" +
-                                        "  )" +
-                                        ") ");
+                                           " `data`['id'] id, " +
+                                           " `data`['user_id'] user_id, " +
+                                           " `data`['sku_id'] sku_id, " +
+                                           " `data`['source_id'] source_id, " +
+                                           " `data`['source_type'] source_type, " +
+                                           // 如果是insert直接取, 如果update 取与old差值
+                                           " if(`type`='insert', " +
+                                           "  `data`['sku_num'], " +
+                                           "   cast(cast(`data`['sku_num'] as int) - cast(`old`['sku_num'] as int) as string)" +
+                                           " ) sku_num, " +
+                                           " ts, " +
+                                           " pt " +
+                                           "from ods_db " +
+                                           "where `database`='gmall2022' " +
+                                           "and `table`='cart_info' " +
+                                           "and (`type`='insert'  " +
+                                           "  or " +
+                                           " (`type`='update' " +
+                                           "     and `old`['sku_num'] is not null " +
+                                           "     and cast(`data`['sku_num'] as int) > cast(`old`['sku_num'] as int)" +
+                                           "  )" +
+                                           ") ");
         tEnv.createTemporaryView("cart_info", cartInfo);
         // 3. 地区维度表: 字典表
-        
-        
+        readBaseDic(tEnv);
         // 4. 把字典表中的数据退化到加购表
         // 使用join ? join, left join, lookup join
+        Table result = tEnv.sqlQuery("select " +
+                                        "cadd.id, " +
+                                        "user_id, " +
+                                        "sku_id, " +
+                                        "source_id, " +
+                                        "source_type, " +
+                                        "dic_name source_type_name, " +
+                                        "sku_num, " +
+                                        "ts " +
+                                        "from cart_info as cadd " +
+                                        "join base_dic for system_time as of cadd.pt as dic " +
+                                        "on cadd.source_type=dic.dic_code");
         
         // 5. 把join后的明细数据写入到kafka的topic中
+        // kafka or upsert-kafka
+        tEnv.executeSql(
+            "create table dwd_trade_cart_add( " +
+                "id string, " +
+                "user_id string, " +
+                "sku_id string, " +
+                "source_id string, " +
+                "source_type_code string, " +
+                "source_type_name string, " +
+                "sku_num string, " +
+                "ts bigint " +
+                ")" + SQLUtil.getKafkaSinkSQL(Constant.TOPIC_DWD_TRADE_CART_ADD)
+        );
+        result.executeInsert("dwd_trade_cart_add");
+        
     }
 }
 /*
