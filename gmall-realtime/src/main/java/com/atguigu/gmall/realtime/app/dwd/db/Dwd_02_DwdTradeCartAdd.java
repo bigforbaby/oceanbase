@@ -40,7 +40,6 @@ public class Dwd_02_DwdTradeCartAdd extends BaseSQLApp {
                     "order_time": null
             }
             
-            
             "id": 33264,
             "user_id": "1595",
             "sku_id": 5,
@@ -82,7 +81,6 @@ public class Dwd_02_DwdTradeCartAdd extends BaseSQLApp {
                                         "  )" +
                                         ") ");
         tEnv.createTemporaryView("cart_info", cartInfo);
-        
         // 3. 地区维度表: 字典表
         
         
