@@ -13,22 +13,22 @@ import java.time.Duration;
  * @Author lzc
  * @Date 2022/9/21 14:57
  */
-public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
+public class Dwd_04_DwdTradeCancelDetail extends BaseSQLApp {
     public static void main(String[] args) {
-        new Dwd_03_DwdTradeOrderDetail().init(
-            3003,
+        new Dwd_04_DwdTradeCancelDetail().init(
+            3004,
             2,
-            "Dwd_03_DwdTradeOrderDetail"
+            "Dwd_04_DwdTradeCancelDetail"
         );
     }
     
     @Override
     protected void handle(StreamExecutionEnvironment env,
                           StreamTableEnvironment tEnv) {
-        // 只针对事实表与事实表的 join
-        tEnv.getConfig().setIdleStateRetention(Duration.ofSeconds(5));
+        // 由于取消发生的比较晚, 取 30min
+        tEnv.getConfig().setIdleStateRetention(Duration.ofMinutes(30));
         // 1. 先读取 ods_db
-        readOdsDb(tEnv, "Dwd_03_DwdTradeOrderDetail");
+        readOdsDb(tEnv, "Dwd_04_DwdTradeCancelDetail");
         // 2. 读取字典表
         readBaseDic(tEnv);
         // 3. 过滤详情: 只要 insert
@@ -53,7 +53,7 @@ public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
                                               "and `table`='order_detail' " +
                                               "and `type`='insert'");
         tEnv.createTemporaryView("order_detail", orderDetail);
-        // 4. 过滤订单表: 只要 insert  (下单表)
+        // 4. 过滤订单表: 只要 update  并且是订单的状态发生变化, 变成了 1003
         Table orderInfo = tEnv.sqlQuery("select " +
                                             "data['id'] id," +
                                             "data['user_id'] user_id," +
@@ -61,7 +61,10 @@ public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
                                             "from ods_db " +
                                             "where `database`='gmall2022' " +
                                             "and `table`='order_info' " +
-                                            "and `type`='insert'");
+                                            "and `type`='update' " +
+                                            "and `old`['order_status'] is not null " +
+                                            "and `data`['order_status']='1003' "  // 订单状态发生了变化
+        );
         tEnv.createTemporaryView("order_info", orderInfo);
         
         // 5. 详情活动: 只要 insert
@@ -113,7 +116,7 @@ public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
                                          "left join order_detail_coupon cou on od.id=cou.order_detail_id " +
                                          "join base_dic for system_time as of od.pt as dic on od.source_type=dic.dic_code");
         // 8. 建动态表与 kafka 的 topic 关联
-        tEnv.executeSql("create table dwd_trade_order_detail( " +
+        tEnv.executeSql("create table dwd_trade_cancel_detail( " +
                             "id string, " +
                             "order_id string, " +
                             "user_id string, " +
@@ -136,21 +139,14 @@ public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
                             "ts bigint, " +
                             "row_op_ts timestamp_ltz(3), " +
                             "primary key(id) NOT ENFORCED" +
-                            ")" + SQLUtil.getUpsertKafkaSinkSQL(Constant.TOPIC_DWD_TRADE_ORDER_DETAIL));
+                            ")" + SQLUtil.getUpsertKafkaSinkSQL(Constant.DWD_TRADE_CANCEL_DETAIL));
         
         // 9. 写出创建的动态表中
-        result.executeInsert("dwd_trade_order_detail");
+        result.executeInsert("dwd_trade_cancel_detail");
     }
 }
 /*
-详情id  金额  活动   优惠券
-详情1  100   null  null
-null
-详情1  100   abc  null
-null
-详情1  100   abc  edf
 
-详情是有重复. 去重. 最好保存最后一个
 
 
  */
