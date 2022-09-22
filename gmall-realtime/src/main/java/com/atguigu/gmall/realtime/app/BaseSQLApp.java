@@ -3,7 +3,6 @@ package com.atguigu.gmall.realtime.app;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.util.SQLUtil;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -54,11 +53,11 @@ public abstract class BaseSQLApp {
         env.setParallelism(p);
         
         // 1. 开启checkpoint
-        env.enableCheckpointing(3000);
+//       env.enableCheckpointing(3000);
         // 2. 设置状态后端
-        env.setStateBackend(new HashMapStateBackend());
+//        env.setStateBackend(new HashMapStateBackend());
         // 3. 设置checkpoint的存储
-        env.getCheckpointConfig().setCheckpointStorage("hdfs://hadoop162:8020/gmall/" + ckAndJobName);
+       // env.getCheckpointConfig().setCheckpointStorage("hdfs://hadoop162:8020/gmall/" + ckAndJobName);
         // 4. 设置checkpoint的模式
         env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
         // 5. checkpoint 并发数
