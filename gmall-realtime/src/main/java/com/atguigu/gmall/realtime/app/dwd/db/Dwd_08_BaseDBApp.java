@@ -69,7 +69,7 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
             public Tuple2<JSONObject, TableProcess> map(Tuple2<JSONObject, TableProcess> value) throws Exception {
                 JSONObject data = value.f0;
                 TableProcess tp = value.f1;
-    
+                
                 List<String> needColumns = Arrays.asList(tp.getSinkColumns().split(","));
                 data.keySet().removeIf(key -> !needColumns.contains(key));
                 return value;
@@ -77,8 +77,9 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
         });
     }
     
-    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(SingleOutputStreamOperator<JSONObject> dataStream,
-                                                                                 SingleOutputStreamOperator<TableProcess> tpStream) {
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(
+        SingleOutputStreamOperator<JSONObject> dataStream,
+        SingleOutputStreamOperator<TableProcess> tpStream) {
         // 1. 把配置流做成广播流
         // key:表名    value:TableProcess
         // 读或写的时候都能得到这个表名
