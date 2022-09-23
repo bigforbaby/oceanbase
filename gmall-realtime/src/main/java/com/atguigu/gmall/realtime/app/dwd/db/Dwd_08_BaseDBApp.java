@@ -9,6 +9,7 @@ import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.state.BroadcastState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ReadOnlyBroadcastState;
@@ -20,6 +21,8 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.util.Collector;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -45,22 +48,39 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
         // 2. 读取配置表数据(cdc)
         SingleOutputStreamOperator<TableProcess> tpStream = readTableProcess(env);
         // 3. 清洗后的数据与配置表进行 connect
-        connect(etledStream, tpStream);
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream = connect(etledStream, tpStream);
         // 5. 过滤掉不需要的字段
+        connectedStream = filterNoNeedColumns(connectedStream);
+        connectedStream.print();
         
         // 6. 写出到 kafka 中
         
     }
     
-    private void connect(SingleOutputStreamOperator<JSONObject> dataStream,
-                         SingleOutputStreamOperator<TableProcess> tpStream) {
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(
+        SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> stream) {
+        return stream.map(new MapFunction<Tuple2<JSONObject, TableProcess>, Tuple2<JSONObject, TableProcess>>() {
+            @Override
+            public Tuple2<JSONObject, TableProcess> map(Tuple2<JSONObject, TableProcess> value) throws Exception {
+                JSONObject data = value.f0;
+                TableProcess tp = value.f1;
+    
+                List<String> needColumns = Arrays.asList(tp.getSinkColumns().split(","));
+                data.keySet().removeIf(key -> !needColumns.contains(key));
+                return value;
+            }
+        });
+    }
+    
+    private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(SingleOutputStreamOperator<JSONObject> dataStream,
+                                                                                 SingleOutputStreamOperator<TableProcess> tpStream) {
         // 1. 把配置流做成广播流
         // key:表名    value:TableProcess
         // 读或写的时候都能得到这个表名
         MapStateDescriptor<String, TableProcess> tpStateDesc = new MapStateDescriptor<>("tpState", String.class, TableProcess.class);
         BroadcastStream<TableProcess> tpBcStream = tpStream.broadcast(tpStateDesc);
         // 2. 数据流和广播流进行 connect
-        dataStream
+        return dataStream
             .connect(tpBcStream)
             .process(new BroadcastProcessFunction<JSONObject, TableProcess, Tuple2<JSONObject, TableProcess>>() {
                 
@@ -80,7 +100,7 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
                             // 数据  配置信息
                             out.collect(Tuple2.of(obj.getJSONObject("data"), tp));
                         }
-                    }else{
+                    } else {
                         //tp取数据是不可能的, 因为 tp=null
                         // 通过这个 key 没有找到对应的配置信息. 需要对 coupon_use 的下单和支付
                         //TODO  dwd_tool_coupon_order 和 dwd_tool_coupon_pay
@@ -90,14 +110,14 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
                             // 特殊处理
                             JSONObject data = obj.getJSONObject("data");
                             JSONObject old = obj.getJSONObject("old");
-    
+                            
                             if (data.getString("used_time") != null) {
                                 // 这次使用优惠券支付完毕
                                 tp = state.get(key + "{\"data\": {\"used_time\": \"not null\"}}");
-                                out.collect(Tuple2.of(data,tp));
-                            }else if(old != null && "1402".equals(data.getString("coupon_status")) && "1401".equals(old.getString("coupon_status"))){
+                                out.collect(Tuple2.of(data, tp));
+                            } else if (old != null && "1402".equals(data.getString("coupon_status")) && "1401".equals(old.getString("coupon_status"))) {
                                 tp = state.get(key + "{\"data\": {\"coupon_status\": \"1402\"}, \"old\": {\"coupon_status\": \"1401\"}}");
-                                out.collect(Tuple2.of(data,tp));
+                                out.collect(Tuple2.of(data, tp));
                             }
                         }
                     }
@@ -115,12 +135,14 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
                     // value: Tp
                     BroadcastState<String, TableProcess> state = ctx.getBroadcastState(tpStateDesc);
                     // 拼接tp.getSinkExtend()目的是为了防止覆盖
-                    //
                     String key = tp.getSourceTable() + ":" + tp.getSourceType() + ":" + (tp.getSinkExtend() == null ? "" : tp.getSinkExtend());
-                    state.put(key, tp);
+                    if ("d".equals(tp.getOp())) { // 如果有配置信息被删除, 则应该把这个信息从广播状态中移除
+                        state.remove(key);
+                    } else {
+                        state.put(key, tp);
+                    }
                 }
-            })
-            .print();
+            });
         
         
     }
