@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -51,10 +52,14 @@ public class Dwd_08_BaseDBApp extends BaseAppV1 {
         SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream = connect(etledStream, tpStream);
         // 5. 过滤掉不需要的字段
         connectedStream = filterNoNeedColumns(connectedStream);
-        connectedStream.print();
-        
         // 6. 写出到 kafka 中
+        writeToKafka(connectedStream);
         
+    }
+    
+    private void writeToKafka(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> stream) {
+        // 重新实现一个新的 kafka sink, 这个时候的 topic 是由数据本身来决定
+        stream.addSink(FlinkSinkUtil.getKafkaSink());
     }
     
     private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(
