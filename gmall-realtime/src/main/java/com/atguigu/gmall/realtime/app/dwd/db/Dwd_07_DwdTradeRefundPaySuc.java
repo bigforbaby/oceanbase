@@ -1,6 +1,8 @@
 package com.atguigu.gmall.realtime.app.dwd.db;
 
 import com.atguigu.gmall.realtime.app.BaseSQLApp;
+import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.SQLUtil;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -75,12 +77,50 @@ public class Dwd_07_DwdTradeRefundPaySuc extends BaseSQLApp {
                                               //                          + "and `type`='update' " +
                                               //                          "and `old`['refund_status'] is not null " +
                                               //                          "and `data`['refund_status']='0705' " +
+                                              
         );
+        tEnv.createTemporaryView("order_refund_info", orderRefundInfo);
         // 当退款成功之后,三张事实表是同时更新的
         tEnv.getConfig().setIdleStateRetention(Duration.ofSeconds(5));
         // 6. 4 张表做 join
+        Table result = tEnv.sqlQuery("select " +
+                                        "rp.id," +
+                                        "oi.user_id," +
+                                        "rp.order_id," +
+                                        "rp.sku_id," +
+                                        "oi.province_id," +
+                                        "rp.payment_type," +
+                                        "dic.dic_name payment_type_name," +
+                                        "date_format(rp.callback_time,'yyyy-MM-dd') date_id," +
+                                        "rp.callback_time," +
+                                        "ri.refund_num," +
+                                        "rp.total_amount," +
+                                        "rp.ts," +
+                                        "current_row_timestamp() row_op_ts " +
+                                        "from refund_payment rp " +
+                                        "join order_info oi on rp.order_id=oi.id " +
+                                        "join order_refund_info ri on rp.order_id=ri.order_id and rp.sku_id=ri.sku_id " +
+                                        "join base_dic for system_time as of rp.pt as dic on rp.payment_type=dic.dic_code ");
         
         // 7. 写出到 kafka 中
+        tEnv.executeSql("create table dwd_trade_refund_pay_suc(" +
+                                "id string," +
+                                "user_id string," +
+                                "order_id string," +
+                                "sku_id string," +
+                                "province_id string," +
+                                "payment_type_code string," +
+                                "payment_type_name string," +
+                                "date_id string," +
+                                "callback_time string," +
+                                "refund_num string," +
+                                "refund_amount string," +
+                                "ts bigint," +
+                                "row_op_ts timestamp_ltz(3)" +
+                                ")" + SQLUtil.getKafkaSinkSQL(Constant.TOPIC_DWD_TRADE_REFUND_PAY_SUC));
+        
+        result.executeInsert("dwd_trade_refund_pay_suc");
+        
         
     }
 }
