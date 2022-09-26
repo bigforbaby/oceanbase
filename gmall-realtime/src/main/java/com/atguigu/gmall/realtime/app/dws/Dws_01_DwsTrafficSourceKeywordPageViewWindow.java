@@ -1,8 +1,10 @@
 package com.atguigu.gmall.realtime.app.dws;
 
 import com.atguigu.gmall.realtime.app.BaseSQLApp;
+import com.atguigu.gmall.realtime.bean.KeywordBean;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.function.KwSplit;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
 import com.atguigu.gmall.realtime.util.SQLUtil;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
@@ -56,8 +58,8 @@ public class Dws_01_DwsTrafficSourceKeywordPageViewWindow extends BaseSQLApp {
         
         // 4. 开窗聚合  tvf
         Table result = tEnv.sqlQuery("select " +
-                                         "window_start stt, " +
-                                         "window_end edt, " +
+                                         "date_format(window_start, 'yyyy-MM-dd HH:mm:ss') stt, " +
+                                         "date_format(window_end, 'yyyy-MM-dd HH:mm:ss') edt, " +
                                          "'search' source, " +
                                          "kw keyword, " +
                                          "count(*) keyword_count, " +
@@ -67,6 +69,19 @@ public class Dws_01_DwsTrafficSourceKeywordPageViewWindow extends BaseSQLApp {
         
         // 5. 写出到 clickhouse 中
         // 把 result 转成流, 自定义 sink 向外写入
+        tEnv
+            .toRetractStream(result, KeywordBean.class)
+            .filter(t -> t.f0)
+            .map(t ->t.f1)
+            .addSink(FlinkSinkUtil.getClickHouseSink("dws_traffic_source_keyword_page_view_window", KeywordBean.class));
+    
+    
+        try {
+            env.execute();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    
     }
 }
 /*

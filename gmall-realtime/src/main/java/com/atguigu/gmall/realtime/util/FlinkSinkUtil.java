@@ -5,6 +5,10 @@ import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.sink.PhoenixSink;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
+import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
+import org.apache.flink.connector.jdbc.JdbcSink;
+import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 import org.apache.flink.streaming.connectors.kafka.KafkaSerializationSchema;
@@ -12,6 +16,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 
 import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Properties;
 
 /**
@@ -71,4 +77,46 @@ public class FlinkSinkUtil {
         );
         
     }
+    
+    // 如果有泛型, 内部代码绝大部分情况会用到反射, 得需要 class
+    public static <T> SinkFunction<T> getClickHouseSink(String table,
+                                                        Class<T> tClass) {
+        String driver = "com.clickhouse.jdbc.ClickHouseDriver";
+        String url = "jdbc:clickhouse://hadoop162:8123/gmall2022";
+        
+        // TODO
+        String sql = "";
+        
+        return getJdbcSink(driver, url, "default", "aaaaaa", sql);
+    }
+    
+    private static <T> SinkFunction<T> getJdbcSink(String driver,
+                                                   String url,
+                                                   String user,
+                                                   String password,
+                                                   String sql) {
+        return JdbcSink.sink(
+            sql,
+            new JdbcStatementBuilder<T>() {
+                @Override
+                public void accept(PreparedStatement ps,
+                                   T t) throws SQLException {
+                    //TODO 给占位符进行赋值. 需要参考 sql 语句的拼写
+                }
+            },
+            new JdbcExecutionOptions.Builder()
+                .withBatchIntervalMs(2000)
+                .withBatchSize(1024 * 1024)
+                .withMaxRetries(3)
+                .build(),
+            new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                .withDriverName(driver)
+                .withUrl(url)
+                .withUsername(user)
+                .withPassword(password)
+                .build()
+        );
+    }
+    
+    
 }
