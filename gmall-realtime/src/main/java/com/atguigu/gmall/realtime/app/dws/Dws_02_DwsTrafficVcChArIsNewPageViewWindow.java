@@ -6,12 +6,23 @@ import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.TrafficPageViewBean;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.util.Collector;
+
+import java.time.Duration;
 
 
 /**
@@ -32,15 +43,66 @@ public class Dws_02_DwsTrafficVcChArIsNewPageViewWindow extends BaseAppV1 {
     protected void handle(StreamExecutionEnvironment env,
                           DataStreamSource<String> stream) {
         // 1. 先封装数据:TrafficPageViewBean
-        parseToBean(stream);
-        
-        // 2. 开窗聚会
-        
+        SingleOutputStreamOperator<TrafficPageViewBean> beanStream = parseToBean(stream);
+        // 2. 开窗聚和
+        SingleOutputStreamOperator<TrafficPageViewBean> resultStream = windowAndAgg(beanStream);
+    
         // 3. 写出到 clickhouse 中
+        writeToClickHouse(resultStream);
     }
     
-    private void parseToBean(DataStreamSource<String> stream) {
-        stream
+    private void writeToClickHouse(SingleOutputStreamOperator<TrafficPageViewBean> resultStream) {
+        resultStream.addSink(FlinkSinkUtil.getClickHouseSink("dws_traffic_vc_ch_ar_is_new_page_view_window", TrafficPageViewBean.class));
+    }
+    
+    private SingleOutputStreamOperator<TrafficPageViewBean> windowAndAgg(SingleOutputStreamOperator<TrafficPageViewBean> beanStream) {
+        // keyBy:
+        // no keyBY: 窗口的处理的函数并行度必须是 1
+        // sum reduce aggregate process
+       return beanStream
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy
+                    .<TrafficPageViewBean>forBoundedOutOfOrderness(Duration.ofSeconds(3))
+                    .withTimestampAssigner((bean, ts) -> bean.getTs())
+            )
+            .keyBy(bean -> bean.getVc() + "_" + bean.getCh() + "_" + bean.getAr() + "_" + bean.getIsNew())
+            .window(TumblingEventTimeWindows.of(Time.seconds(5)))
+            .reduce(new ReduceFunction<TrafficPageViewBean>() {
+                        @Override
+                        public TrafficPageViewBean reduce(TrafficPageViewBean bean1,
+                                                          TrafficPageViewBean bean2) throws Exception {
+                            bean1.setUvCt(bean1.getUvCt() + bean2.getUvCt());
+                            bean1.setPvCt(bean1.getPvCt() + bean2.getPvCt());
+                            bean1.setSvCt(bean1.getSvCt() + bean2.getSvCt());
+                            bean1.setDurSum(bean1.getDurSum() + bean2.getDurSum());
+                            
+                            return bean1;
+                        }
+                    },
+                    new ProcessWindowFunction<TrafficPageViewBean, TrafficPageViewBean, String, TimeWindow>() {
+                        @Override
+                        public void process(String key,
+                                            Context ctx,
+                                            Iterable<TrafficPageViewBean> elements, // 有且仅有一个值:前面聚和的最终结果
+                                            Collector<TrafficPageViewBean> out) throws Exception {
+                            TrafficPageViewBean bean = elements.iterator().next();
+                            bean.setStt(AtguiguUtil.toDateTime(ctx.window().getStart()));
+                            bean.setEdt(AtguiguUtil.toDateTime(ctx.window().getEnd()));
+                            
+                            // 把 ts 换成统计的时间戳
+                            bean.setTs(System.currentTimeMillis());
+                            out.collect(bean);
+    
+    
+                        }
+                    }
+            );
+        
+        
+    }
+    
+    private SingleOutputStreamOperator<TrafficPageViewBean> parseToBean(DataStreamSource<String> stream) {
+        return stream
             .keyBy(str -> JSON.parseObject(str).getJSONObject("common").getString("uid"))
             .map(new RichMapFunction<String, TrafficPageViewBean>() {
                 
@@ -98,7 +160,6 @@ public class Dws_02_DwsTrafficVcChArIsNewPageViewWindow extends BaseAppV1 {
                         obj.getLong("ts")
                     );
                 }
-            })
-            .print();
+            });
     }
 }

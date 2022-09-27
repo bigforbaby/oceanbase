@@ -1,12 +1,12 @@
 package com.atguigu.gmall.realtime.util;
 
 import com.atguigu.gmall.realtime.bean.KeywordBean;
+import org.apache.flink.shaded.guava18.com.google.common.base.CaseFormat;
 import org.wltea.analyzer.core.IKSegmenter;
 import org.wltea.analyzer.core.Lexeme;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -60,17 +60,27 @@ public class AtguiguUtil {
         return list;*/
         
         // 流式编程
-       return Stream
+        return Stream
             .of(tClass.getDeclaredFields())
-            .map(Field::getName)
+            // 为了和表的字段名保持兼容, 需要把属性名改成下划线命名
+            .map(f -> {
+                String name = f.getName();
+                // aaaBbbCcc
+                // 把驼峰改成下划线
+                return CaseFormat.LOWER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, name);
+            })
             .collect(Collectors.toList());
     }
     
     
     public static void main(String[] args) {
         List<String> list = getClassFieldsName(KeywordBean.class);
-    
+        
         String r = String.join("?", list);
         System.out.println(r);
+    }
+    
+    public static String toDateTime(long ts) {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(ts);
     }
 }
