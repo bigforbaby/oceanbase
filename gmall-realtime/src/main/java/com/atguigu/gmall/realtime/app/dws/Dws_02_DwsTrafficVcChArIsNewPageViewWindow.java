@@ -41,32 +41,32 @@ public class Dws_02_DwsTrafficVcChArIsNewPageViewWindow extends BaseAppV1 {
     
     private void parseToBean(DataStreamSource<String> stream) {
         stream
-            .keyBy(str-> JSON.parseObject(str).getJSONObject("common").getString("uid"))
+            .keyBy(str -> JSON.parseObject(str).getJSONObject("common").getString("uid"))
             .map(new RichMapFunction<String, TrafficPageViewBean>() {
-    
+                
                 private ValueState<String> dateState;
                 private ValueState<String> uidState;
-    
+                
                 @Override
                 public void open(Configuration parameters) throws Exception {
                     // 存储用户 id
                     uidState = getRuntimeContext().getState(new ValueStateDescriptor<String>("uidState", String.class));
-    
+                    
                     dateState = getRuntimeContext().getState(new ValueStateDescriptor<String>("dateState", String.class));
                 }
-    
+                
                 @Override
                 public TrafficPageViewBean map(String value) throws Exception {
                     JSONObject obj = JSON.parseObject(value);
-    
+                    
                     JSONObject common = obj.getJSONObject("common");
                     String vc = common.getString("vc");
                     String ch = common.getString("ch");
                     String ar = common.getString("ar");
                     String isNew = common.getString("is_new");
-    
+                    
                     JSONObject page = obj.getJSONObject("page");
-    
+                    
                     Long pvCt = 1L;
                     Long durSum = page.getLong("during_time");
                     
@@ -93,8 +93,8 @@ public class Dws_02_DwsTrafficVcChArIsNewPageViewWindow extends BaseAppV1 {
                     }
                     return new TrafficPageViewBean(
                         "", "",
-                        vc, ch, ar,isNew,
-                        uvCt, svCt,pvCt,durSum,
+                        vc, ch, ar, isNew,
+                        uvCt, svCt, pvCt, durSum,
                         obj.getLong("ts")
                     );
                 }
