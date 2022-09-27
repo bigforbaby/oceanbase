@@ -77,7 +77,7 @@ public class Dws_01_DwsTrafficSourceKeywordPageViewWindow extends BaseSQLApp {
     
     
         try {
-            env.execute();
+            env.execute("Dws_01_DwsTrafficSourceKeywordPageViewWindow");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

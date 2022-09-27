@@ -64,8 +64,6 @@ public class AtguiguUtil {
             .of(tClass.getDeclaredFields())
             .map(Field::getName)
             .collect(Collectors.toList());
-        
-    
     }
     
     

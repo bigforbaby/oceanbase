@@ -72,6 +72,9 @@ public abstract class BaseSQLApp {
         // 表的执行环境
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         
+        // 给 sql job 设置名字
+        tEnv.getConfig().getConfiguration().setString("pipeline.name", ckAndJobName);
+        
         handle(env, tEnv);
     
     

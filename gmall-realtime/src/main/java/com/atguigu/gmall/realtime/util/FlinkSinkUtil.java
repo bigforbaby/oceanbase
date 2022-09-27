@@ -15,6 +15,7 @@ import org.apache.flink.streaming.connectors.kafka.KafkaSerializationSchema;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 import javax.annotation.Nullable;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -84,7 +85,7 @@ public class FlinkSinkUtil {
                                                         Class<T> tClass) {
         String driver = "com.clickhouse.jdbc.ClickHouseDriver";
         String url = "jdbc:clickhouse://hadoop162:8123/gmall2022";
-    
+        
         List<String> names = AtguiguUtil.getClassFieldsName(tClass);
         // TODO
         // insert into person (id, name, age) values(?,?,?)
@@ -99,7 +100,7 @@ public class FlinkSinkUtil {
             // 拼接占位符
             .append(String.join(",", names).replaceAll("[^,]+", "?"))
             .append(")");
-    
+        
         System.out.println("clickhouse 的插入语句: " + sql);
         
         return getJdbcSink(driver, url, "default", "aaaaaa", sql.toString());
@@ -117,6 +118,18 @@ public class FlinkSinkUtil {
                 public void accept(PreparedStatement ps,
                                    T t) throws SQLException {
                     //TODO 给占位符进行赋值. 需要参考 sql 语句的拼写
+                    //insert into abc(stt,edt,source,keyword,keyword_count,ts) values(?,?,?,?,?,?)
+                    Class<?> tClass = t.getClass();
+                    Field[] fields = tClass.getDeclaredFields();
+                    try {
+                        for (int i = 0; i < fields.length; i++) {
+                            Field field = fields[i];
+                            field.setAccessible(true);// 给这个属性设置访问权限
+                            ps.setObject(i + 1, field.get(t));
+                        }
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
             },
             new JdbcExecutionOptions.Builder()
