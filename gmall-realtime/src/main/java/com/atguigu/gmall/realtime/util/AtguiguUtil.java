@@ -1,14 +1,18 @@
 package com.atguigu.gmall.realtime.util;
 
+import com.atguigu.gmall.realtime.bean.KeywordBean;
 import org.wltea.analyzer.core.IKSegmenter;
 import org.wltea.analyzer.core.Lexeme;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @Author lzc
@@ -43,11 +47,32 @@ public class AtguiguUtil {
     }
     
     // 返回一个去重后的 List 集合
-    public static List<String> distinct(List<String> list){
+    public static List<String> distinct(List<String> list) {
         return new ArrayList<>(new HashSet<>(list));
     }
     
+    public static <T> List<String> getClassFieldsName(Class<T> tClass) {
+        /*Field[] fields = tClass.getDeclaredFields();
+        ArrayList<String> list = new ArrayList<>();
+        for (int i = 0; i < fields.length; i++) {
+            list.add(fields[i].getName());
+        }
+        return list;*/
+        
+        // 流式编程
+       return Stream
+            .of(tClass.getDeclaredFields())
+            .map(Field::getName)
+            .collect(Collectors.toList());
+        
+    
+    }
+    
+    
     public static void main(String[] args) {
-        System.out.println(ikSplit("手机华为手机256g手机"));
+        List<String> list = getClassFieldsName(KeywordBean.class);
+    
+        String r = String.join("?", list);
+        System.out.println(r);
     }
 }

@@ -25,4 +25,8 @@ public class KeywordBean {
 
     // 时间戳
     private Long ts;
+    
+    public void f(){
+        System.out.println("f...");
+    }
 }

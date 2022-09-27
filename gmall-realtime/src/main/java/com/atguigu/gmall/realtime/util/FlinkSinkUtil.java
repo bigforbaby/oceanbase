@@ -18,6 +18,7 @@ import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -83,11 +84,25 @@ public class FlinkSinkUtil {
                                                         Class<T> tClass) {
         String driver = "com.clickhouse.jdbc.ClickHouseDriver";
         String url = "jdbc:clickhouse://hadoop162:8123/gmall2022";
-        
+    
+        List<String> names = AtguiguUtil.getClassFieldsName(tClass);
         // TODO
-        String sql = "";
+        // insert into person (id, name, age) values(?,?,?)
+        StringBuilder sql = new StringBuilder();
+        sql
+            .append("insert into ")
+            .append(table)
+            .append("(")
+            // 拼接字段名. tClass 中的有哪些属性, 把属性名找到, 拼成一个字符串
+            .append(String.join(",", names))
+            .append(") values(")
+            // 拼接占位符
+            .append(String.join(",", names).replaceAll("[^,]+", "?"))
+            .append(")");
+    
+        System.out.println("clickhouse 的插入语句: " + sql);
         
-        return getJdbcSink(driver, url, "default", "aaaaaa", sql);
+        return getJdbcSink(driver, url, "default", "aaaaaa", sql.toString());
     }
     
     private static <T> SinkFunction<T> getJdbcSink(String driver,
