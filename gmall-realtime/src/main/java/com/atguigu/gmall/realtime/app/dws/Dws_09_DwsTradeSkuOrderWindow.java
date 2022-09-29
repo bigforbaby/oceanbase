@@ -21,6 +21,7 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -48,15 +49,16 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
         // 3. 开窗聚合
         // keyBy: 按照 sku_id
         SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithoutDims = windowAndAgg(beanStream);
-        resultStreamWithoutDims.print();
         // 4. 补充维度信息
         // 2个优化
+        
         
         // 5. 写出到 clickhouse 中
     }
     
-    private SingleOutputStreamOperator<TradeSkuOrderBean> windowAndAgg(SingleOutputStreamOperator<TradeSkuOrderBean> beanStream) {
-      return  beanStream
+    private SingleOutputStreamOperator<TradeSkuOrderBean> windowAndAgg(
+        SingleOutputStreamOperator<TradeSkuOrderBean> beanStream) {
+        return beanStream
             .assignTimestampsAndWatermarks(
                 WatermarkStrategy
                     .<TradeSkuOrderBean>forBoundedOutOfOrderness(Duration.ofSeconds(3))
@@ -67,9 +69,15 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
             .reduce(
                 new ReduceFunction<TradeSkuOrderBean>() {
                     @Override
-                    public TradeSkuOrderBean reduce(TradeSkuOrderBean value1,
-                                                    TradeSkuOrderBean value2) throws Exception {
-                        return null;
+                    public TradeSkuOrderBean reduce(TradeSkuOrderBean b1,
+                                                    TradeSkuOrderBean b2) throws Exception {
+                        b1.setOriginalAmount(b1.getOriginalAmount().add(b2.getOrderAmount()));
+                        b1.setActivityAmount(b1.getActivityAmount().add(b2.getActivityAmount()));
+                        b1.setCouponAmount(b1.getCouponAmount().add(b2.getCouponAmount()));
+                        b1.setOrderAmount(b1.getOrderAmount().add(b2.getOrderAmount()));
+                        
+                        b1.getOrderIdSet().addAll(b2.getOrderIdSet());
+                        return b1;
                     }
                 },
                 new ProcessWindowFunction<TradeSkuOrderBean, TradeSkuOrderBean, String, TimeWindow>() {
@@ -78,7 +86,16 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
                                         Context ctx,
                                         Iterable<TradeSkuOrderBean> elements,
                                         Collector<TradeSkuOrderBean> out) throws Exception {
-        
+                        TradeSkuOrderBean bean = elements.iterator().next();
+                        bean.setStt(AtguiguUtil.toDateTime(ctx.window().getStart()));
+                        bean.setEdt(AtguiguUtil.toDateTime(ctx.window().getEnd()));
+    
+                        bean.setTs(System.currentTimeMillis());
+                        
+                        bean.setOrderCount((long) bean.getOrderIdSet().size());
+                        
+                        out.collect(bean);
+    
                     }
                 }
             );
@@ -90,8 +107,8 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
                 .skuId(obj.getString("sku_id"))
                 .orderIdSet(new HashSet<>(Collections.singletonList(obj.getString("order_id"))))
                 .originalAmount(obj.getBigDecimal("split_original_amount"))
-                .activityAmount(obj.getBigDecimal("split_activity_amount"))
-                .couponAmount(obj.getBigDecimal("split_coupon_amount"))
+                .activityAmount(obj.getBigDecimal("split_activity_amount") == null ? new BigDecimal(0) : obj.getBigDecimal("split_activity_amount"))
+                .couponAmount(obj.getBigDecimal("split_coupon_amount") == null ? new BigDecimal(0) : obj.getBigDecimal("split_coupon_amount"))
                 .orderAmount(obj.getBigDecimal("split_total_amount"))
                 .ts(obj.getLong("ts") * 1000)
                 .build());
