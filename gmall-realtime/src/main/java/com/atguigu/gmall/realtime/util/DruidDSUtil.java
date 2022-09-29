@@ -3,9 +3,11 @@ package com.atguigu.gmall.realtime.util;
 import com.alibaba.druid.pool.DruidDataSource;
 import com.atguigu.gmall.realtime.common.Constant;
 
+import java.sql.SQLException;
+
 public class DruidDSUtil {
     private static DruidDataSource druidDataSource;
-
+    
     static {
         // 创建连接池
         druidDataSource = new DruidDataSource();
@@ -36,8 +38,16 @@ public class DruidDSUtil {
         // 设置池中连接空闲 30min 被回收，默认值即为 30 min
         druidDataSource.setMinEvictableIdleTimeMillis(30 * 60 * 1000L);
     }
-
+    
     public static DruidDataSource getDataSource() {
+        
+        try {
+            if (druidDataSource.isClosed()) {
+                druidDataSource.restart();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
         return druidDataSource;
     }
 }
