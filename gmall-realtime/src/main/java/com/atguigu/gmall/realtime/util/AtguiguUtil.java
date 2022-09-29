@@ -7,6 +7,7 @@ import org.wltea.analyzer.core.Lexeme;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -82,5 +83,12 @@ public class AtguiguUtil {
     
     public static String toDateTime(long ts) {
         return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(ts);
+    }
+    
+    
+    
+    public static Long dateToTs(String date) throws ParseException {
+        // 把年月日转成毫秒值
+        return new SimpleDateFormat("yyyy-MM-dd").parse(date).getTime();
     }
 }
