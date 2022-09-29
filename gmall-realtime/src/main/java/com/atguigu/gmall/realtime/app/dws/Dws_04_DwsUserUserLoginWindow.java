@@ -6,6 +6,9 @@ import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.UserLoginBean;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
@@ -13,7 +16,13 @@ import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
+
+import java.time.Duration;
 
 /**
  * @Author lzc
@@ -35,17 +44,59 @@ public class Dws_04_DwsUserUserLoginWindow extends BaseAppV1 {
         // 1. 找到登录记录
         SingleOutputStreamOperator<JSONObject> loginDataStream = findLoginPage(stream);
         // 2. 把 stream 中的数据解析成一个 pojo 类型 UserLoginBean
-        parseToPojo(loginDataStream);
-        
-        // 2. 开窗聚会
-        
+        SingleOutputStreamOperator<UserLoginBean> beanStream = parseToPojo(loginDataStream);
+        // 2. 开窗聚合
+        SingleOutputStreamOperator<UserLoginBean> resultStream = windowAndAgg(beanStream);
+    
         // 3. 写出 clickhouse 中
+        writeToClickHouse(resultStream);
         
     }
     
-    private void parseToPojo(SingleOutputStreamOperator<JSONObject> loginDataStream) {
+    private void writeToClickHouse(SingleOutputStreamOperator<UserLoginBean> resultStream) {
+        resultStream.addSink(FlinkSinkUtil.getClickHouseSink("dws_user_user_login_window", UserLoginBean.class));
+    }
+    
+    private SingleOutputStreamOperator<UserLoginBean> windowAndAgg(SingleOutputStreamOperator<UserLoginBean> beanStream) {
+       return beanStream
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy
+                    .<UserLoginBean>forBoundedOutOfOrderness(Duration.ofSeconds(3))
+                    .withTimestampAssigner((bean, ts) -> bean.getTs())
+            )
+            .windowAll(TumblingEventTimeWindows.of(Time.seconds(5)))
+            .reduce(
+                new ReduceFunction<UserLoginBean>() {
+                    @Override
+                    public UserLoginBean reduce(UserLoginBean b1,
+                                                UserLoginBean b2) throws Exception {
+                        b1.setUuCt(b2.getUuCt() + b1.getUuCt());
+                        b1.setBackCt(b2.getBackCt() + b1.getBackCt());
+                        return b1;
+                    }
+                },
+                new ProcessAllWindowFunction<UserLoginBean, UserLoginBean, TimeWindow>() {
+                    @Override
+                    public void process(Context ctx,
+                                        Iterable<UserLoginBean> elements,
+                                        Collector<UserLoginBean> out) throws Exception {
+                        UserLoginBean bean = elements.iterator().next();
+                        
+                        bean.setStt(AtguiguUtil.toDateTime(ctx.window().getStart()));
+                        bean.setEdt(AtguiguUtil.toDateTime(ctx.window().getEnd()));
+    
+                        bean.setTs(System.currentTimeMillis());
+                        
+                        out.collect(bean);
+                    }
+                }
+            );
+    }
+    
+    private SingleOutputStreamOperator<UserLoginBean> parseToPojo(
+        SingleOutputStreamOperator<JSONObject> loginDataStream) {
         // 找到每个用户的第一第一次 登陆记录, 封装到 bean
-        loginDataStream
+        return loginDataStream
             .keyBy(obj -> obj.getJSONObject("common").getString("uid"))
             .process(new KeyedProcessFunction<String, JSONObject, UserLoginBean>() {
                 
@@ -96,8 +147,7 @@ public class Dws_04_DwsUserUserLoginWindow extends BaseAppV1 {
                     
                     
                 }
-            })
-            .print();
+            });
     }
     
     private SingleOutputStreamOperator<JSONObject> findLoginPage(DataStreamSource<String> stream) {

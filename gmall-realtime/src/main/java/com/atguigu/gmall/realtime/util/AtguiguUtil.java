@@ -91,4 +91,8 @@ public class AtguiguUtil {
         // 把年月日转成毫秒值
         return new SimpleDateFormat("yyyy-MM-dd").parse(date).getTime();
     }
+    
+    public static long dateTimeToTs(String dateTime) throws ParseException {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateTime).getTime();
+    }
 }

@@ -24,4 +24,5 @@ public class Constant {
     
     public static final String TOPIC_DWD_TRADE_ORDER_REFUND = "dwd_trade_order_refund";
     public static final String TOPIC_DWD_TRADE_REFUND_PAY_SUC = "dwd_trade_refund_pay_suc";
+    public static final String TOPIC_DWD_USER_REGISTER = "dwd_user_register";
 }
