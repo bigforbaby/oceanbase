@@ -1,13 +1,17 @@
 package com.atguigu.gmall.realtime.app.dws;
 
+import com.alibaba.druid.pool.DruidDataSource;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
 import com.atguigu.gmall.realtime.bean.TradeSkuOrderBean;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import com.atguigu.gmall.realtime.util.DimUtil;
+import com.atguigu.gmall.realtime.util.DruidDSUtil;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
@@ -22,6 +26,7 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -50,10 +55,36 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
         // keyBy: 按照 sku_id
         SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithoutDims = windowAndAgg(beanStream);
         // 4. 补充维度信息
+        SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithDims =  addDim(resultStreamWithoutDims);
+        resultStreamWithDims.print();
         // 2个优化
         
         
+        
         // 5. 写出到 clickhouse 中
+    }
+    
+    private SingleOutputStreamOperator<TradeSkuOrderBean> addDim(SingleOutputStreamOperator<TradeSkuOrderBean> stream) {
+        return stream.map(new RichMapFunction<TradeSkuOrderBean, TradeSkuOrderBean>() {
+    
+            private Connection conn;
+    
+            @Override
+            public void open(Configuration parameters) throws Exception {
+                DruidDataSource dataSource = DruidDSUtil.getDataSource();
+                conn = dataSource.getConnection();
+            }
+    
+            @Override
+            public TradeSkuOrderBean map(TradeSkuOrderBean bean) throws Exception {
+                // select * from t where id=?
+                JSONObject skuInfo = DimUtil.readDimFromPhoenix(conn, "dim_sku_info", bean.getSkuId());
+                bean.setSkuName(skuInfo.getString("SKU_NAME")); // phoenix中的字段名默认都大写
+                bean.setSpuId(skuInfo.getString("SPU_ID")); // phoenix中的字段名默认都大写
+                
+                return bean;
+            }
+        });
     }
     
     private SingleOutputStreamOperator<TradeSkuOrderBean> windowAndAgg(
