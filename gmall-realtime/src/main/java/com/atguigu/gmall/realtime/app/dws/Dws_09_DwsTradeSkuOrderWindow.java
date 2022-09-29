@@ -100,8 +100,8 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
                         String currentTime = obj.getString("row_op_ts");
                         // 2022-09-29 03:38:59.055Z
                         
-                        // 07z=70z
-                        // 071z=71z
+                        // 07z=70 ms
+                        // 071z=71 ms
                     }
                     
                 }
