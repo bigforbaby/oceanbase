@@ -3,7 +3,11 @@ package com.atguigu.gmall.realtime.app.dws;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.app.BaseAppV1;
+import com.atguigu.gmall.realtime.bean.TradeSkuOrderBean;
 import com.atguigu.gmall.realtime.common.Constant;
+import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
@@ -11,7 +15,15 @@ import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
+
+import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
 
 /**
  * @Author lzc
@@ -30,17 +42,59 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
     @Override
     protected void handle(StreamExecutionEnvironment env, DataStreamSource<String> stream) {
         // 1. 先按照详情id 进行去重
-        distinctByOrderDetailId(stream).print();
-        
+        SingleOutputStreamOperator<JSONObject> distinctedStream = distinctByOrderDetailId(stream);
         // 2. 把数据封装到 pojo 中
-        
+        SingleOutputStreamOperator<TradeSkuOrderBean> beanStream = parseToPojo(distinctedStream);
         // 3. 开窗聚合
         // keyBy: 按照 sku_id
-        
+        SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithoutDims = windowAndAgg(beanStream);
+        resultStreamWithoutDims.print();
         // 4. 补充维度信息
         // 2个优化
         
         // 5. 写出到 clickhouse 中
+    }
+    
+    private SingleOutputStreamOperator<TradeSkuOrderBean> windowAndAgg(SingleOutputStreamOperator<TradeSkuOrderBean> beanStream) {
+      return  beanStream
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy
+                    .<TradeSkuOrderBean>forBoundedOutOfOrderness(Duration.ofSeconds(3))
+                    .withTimestampAssigner((bean, ts) -> bean.getTs())
+            )
+            .keyBy(TradeSkuOrderBean::getSkuId)
+            .window(TumblingEventTimeWindows.of(Time.seconds(5)))
+            .reduce(
+                new ReduceFunction<TradeSkuOrderBean>() {
+                    @Override
+                    public TradeSkuOrderBean reduce(TradeSkuOrderBean value1,
+                                                    TradeSkuOrderBean value2) throws Exception {
+                        return null;
+                    }
+                },
+                new ProcessWindowFunction<TradeSkuOrderBean, TradeSkuOrderBean, String, TimeWindow>() {
+                    @Override
+                    public void process(String skuId,
+                                        Context ctx,
+                                        Iterable<TradeSkuOrderBean> elements,
+                                        Collector<TradeSkuOrderBean> out) throws Exception {
+        
+                    }
+                }
+            );
+    }
+    
+    private SingleOutputStreamOperator<TradeSkuOrderBean> parseToPojo(SingleOutputStreamOperator<JSONObject> steam) {
+        return steam
+            .map(obj -> TradeSkuOrderBean.builder()
+                .skuId(obj.getString("sku_id"))
+                .orderIdSet(new HashSet<>(Collections.singletonList(obj.getString("order_id"))))
+                .originalAmount(obj.getBigDecimal("split_original_amount"))
+                .activityAmount(obj.getBigDecimal("split_activity_amount"))
+                .couponAmount(obj.getBigDecimal("split_coupon_amount"))
+                .orderAmount(obj.getBigDecimal("split_total_amount"))
+                .ts(obj.getLong("ts") * 1000)
+                .build());
     }
     
     private SingleOutputStreamOperator<JSONObject> distinctByOrderDetailId(DataStreamSource<String> stream) {
@@ -71,6 +125,11 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
          */
         return stream
             .map(JSON::parseObject)
+            /* .assignTimestampsAndWatermarks(
+                 WatermarkStrategy
+                     .<JSONObject>forBoundedOutOfOrderness(Duration.ofSeconds(3))
+                     .withTimestampAssigner((obj, ts) -> obj.getLong("ts") * 1000)
+             )*/
             .keyBy(obj -> obj.getString("id"))
             .process(new KeyedProcessFunction<String, JSONObject, JSONObject>() {
                 
@@ -91,20 +150,34 @@ public class Dws_09_DwsTradeSkuOrderWindow extends BaseAppV1 {
                     if (rowOpTsMaxData == null) {
                         long ts = obj.getLong("ts") * 1000;
                         // 当第一条来的时候注册定时器
-                        ctx.timerService().registerEventTimeTimer(ts + 5000);
+                        ctx.timerService().registerProcessingTimeTimer(ts + 5000);
                         
                         // 数据存入到状态中
                         rowOpTsMaxDataState.update(obj);
-                    }else{
+                    } else {
                         String preTime = rowOpTsMaxData.getString("row_op_ts");
                         String currentTime = obj.getString("row_op_ts");
                         // 2022-09-29 03:38:59.055Z
-                        
                         // 07z=70 ms
                         // 071z=71 ms
+                        // 如果currentTime > preTime, 更新状态
+                        boolean greater = AtguiguUtil.isGreater(currentTime, preTime);
+                        if (greater) {
+                            rowOpTsMaxDataState.update(obj);
+                        }
                     }
-                    
+                }
+                
+                @Override
+                public void onTimer(long timestamp,
+                                    OnTimerContext ctx,
+                                    Collector<JSONObject> out) throws Exception {
+                    // 当定时器触发的时候, 最全的已经到了
+                    JSONObject obj = rowOpTsMaxDataState.value();
+                    out.collect(obj);
                 }
             });
+        
+        
     }
 }

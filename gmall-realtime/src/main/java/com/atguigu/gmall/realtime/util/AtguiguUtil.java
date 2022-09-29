@@ -1,6 +1,5 @@
 package com.atguigu.gmall.realtime.util;
 
-import com.atguigu.gmall.realtime.bean.KeywordBean;
 import org.apache.flink.shaded.guava18.com.google.common.base.CaseFormat;
 import org.wltea.analyzer.core.IKSegmenter;
 import org.wltea.analyzer.core.Lexeme;
@@ -75,10 +74,7 @@ public class AtguiguUtil {
     
     
     public static void main(String[] args) {
-        List<String> list = getClassFieldsName(KeywordBean.class);
-        
-        String r = String.join("?", list);
-        System.out.println(r);
+        System.out.println(isGreater("2022-09-29 03:38:59.051Z", "2022-09-29 03:38:59.05Z"));
     }
     
     public static String toDateTime(long ts) {
@@ -95,4 +91,13 @@ public class AtguiguUtil {
     public static long dateTimeToTs(String dateTime) throws ParseException {
         return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateTime).getTime();
     }
+    
+    // 测试 one 是大于 tow, 如果是返回 true, 否则返回 false
+    public static boolean isGreater(String one, String two) {
+        one = one.replaceAll("Z", "");
+        two = two.replaceAll("Z", "");
+        return one.compareTo(two) > 0;
+    }
+    
+    
 }
