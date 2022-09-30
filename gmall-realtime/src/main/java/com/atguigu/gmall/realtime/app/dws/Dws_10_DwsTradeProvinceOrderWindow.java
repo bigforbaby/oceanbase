@@ -126,7 +126,5 @@ public class Dws_10_DwsTradeProvinceOrderWindow extends BaseAppV1 {
                 TimeUnit.SECONDS
             )
             .addSink(FlinkSinkUtil.getClickHouseSink("dws_trade_province_order_window", TradeProvinceOrderWindow.class));
-        
-        
     }
 }
