@@ -138,7 +138,7 @@ public class Dws_09_DwsTradeSkuOrderWindow_Cache_Async extends BaseAppV1 {
         );
     
         SingleOutputStreamOperator<TradeSkuOrderBean> c3Stream = AsyncDataStream.unorderedWait(
-            spuInfoStream,  // 对这个流中的数据进行异步处理
+            tmStream,  // 对这个流中的数据进行异步处理
             new DimAsyncFunction<TradeSkuOrderBean>() {
                 @Override
                 protected String getTable() {
