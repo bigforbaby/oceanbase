@@ -5,11 +5,14 @@ import com.alibaba.druid.pool.DruidPooledConnection;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.util.DruidDSUtil;
+import com.atguigu.gmall.realtime.util.RedisUtil;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+import redis.clients.jedis.Jedis;
 
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 
 /**
  * @Author lzc
@@ -18,16 +21,22 @@ import java.sql.PreparedStatement;
 public class PhoenixSink extends RichSinkFunction<Tuple2<JSONObject, TableProcess>> {
     
     private DruidDataSource dataSource;
+    private Jedis redisClient;
     
     @Override
     public void open(Configuration parameters) throws Exception {
         dataSource = DruidDSUtil.getDataSource(); // 获取连接器
+        
+        redisClient = RedisUtil.getRedisClient();
     }
     
     @Override
     public void close() throws Exception {
         if (dataSource != null) {
             dataSource.close();  // 关闭连接池
+        }
+        if (redisClient != null) {
+            redisClient.close();
         }
     }
     
@@ -37,7 +46,24 @@ public class PhoenixSink extends RichSinkFunction<Tuple2<JSONObject, TableProces
                        Context ctx) throws Exception {
         JSONObject data = t.f0;
         TableProcess tp = t.f1;
+        // 1. 写出维度数据到 phoenix
+        writeToPhoenix(data, tp);
         
+        // 2. 新增一个功能, 当维度发生更新的时候, 删除缓存
+        delCache(data, tp);
+    }
+    
+    private void delCache(JSONObject data, TableProcess tp) {
+        //当维度发生更新的时候, 删除缓存
+        String op = data.getString("op");
+        if ("update".equals(op)) {
+            // 当维度更新的时候, 删除换成
+            String key = tp.getSinkTable()+":"+data.getString("id");
+            redisClient.del(key);
+        }
+    }
+    
+    private void writeToPhoenix(JSONObject data, TableProcess tp) throws SQLException {
         //TODO
         // upsert into t(a,b,c)values(?,?,?)
         StringBuilder sql = new StringBuilder();
@@ -53,7 +79,7 @@ public class PhoenixSink extends RichSinkFunction<Tuple2<JSONObject, TableProces
             .append(")");
         // 1. 从连接池获取连接对象
         DruidPooledConnection conn = dataSource.getConnection();
-    
+        
         // 2. 通过连接对象得到一个预处理语句
         PreparedStatement ps = conn.prepareStatement(sql.toString());
         // 3. 对sql中的占位符赋值 TODO
@@ -64,7 +90,7 @@ public class PhoenixSink extends RichSinkFunction<Tuple2<JSONObject, TableProces
             // 需要做非空判断: 如果是null, 就写入null, 否则就写入自己
             ps.setString(i + 1, data.get(columnName) == null ? null : data.get(columnName).toString());
         }
-    
+        
         // 4. 执行预处理语句
         ps.execute();
         // 5. 提交
