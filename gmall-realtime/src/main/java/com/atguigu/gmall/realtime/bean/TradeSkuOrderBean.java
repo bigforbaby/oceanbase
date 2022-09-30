@@ -1,5 +1,6 @@
 package com.atguigu.gmall.realtime.bean;
 
+import com.atguigu.gmall.realtime.annotation.NoNeedSink;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -50,7 +51,7 @@ public class TradeSkuOrderBean {
     // 下单金额
     BigDecimal orderAmount;
     
-   
+   @NoNeedSink
     Set<String> orderIdSet;
     // 订单数: 这个商品被下单的个数
     // 怎么计算? 有一个订单就 +1 不是很准.

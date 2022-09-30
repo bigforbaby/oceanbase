@@ -1,5 +1,7 @@
 package com.atguigu.gmall.realtime.util;
 
+import com.atguigu.gmall.realtime.annotation.NoNeedSink;
+import com.atguigu.gmall.realtime.bean.TradeSkuOrderBean;
 import org.apache.flink.shaded.guava18.com.google.common.base.CaseFormat;
 import org.wltea.analyzer.core.IKSegmenter;
 import org.wltea.analyzer.core.Lexeme;
@@ -62,6 +64,13 @@ public class AtguiguUtil {
         // 流式编程
         return Stream
             .of(tClass.getDeclaredFields())
+            // 把有标记的过滤掉
+            .filter(field -> {
+                // 有注解就向外写, 没有注解才写
+                NoNeedSink noNeedSink = field.getAnnotation(NoNeedSink.class);
+                return noNeedSink == null;
+            })
+            
             // 为了和表的字段名保持兼容, 需要把属性名改成下划线命名
             .map(f -> {
                 String name = f.getName();
@@ -74,13 +83,12 @@ public class AtguiguUtil {
     
     
     public static void main(String[] args) {
-        System.out.println(isGreater("2022-09-29 03:38:59.051Z", "2022-09-29 03:38:59.05Z"));
+        System.out.println(getClassFieldsName(TradeSkuOrderBean.class));
     }
     
     public static String toDateTime(long ts) {
         return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(ts);
     }
-    
     
     
     public static Long dateToTs(String date) throws ParseException {

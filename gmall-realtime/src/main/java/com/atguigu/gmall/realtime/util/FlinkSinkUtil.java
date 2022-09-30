@@ -1,6 +1,7 @@
 package com.atguigu.gmall.realtime.util;
 
 import com.alibaba.fastjson.JSONObject;
+import com.atguigu.gmall.realtime.annotation.NoNeedSink;
 import com.atguigu.gmall.realtime.bean.TableProcess;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.sink.PhoenixSink;
@@ -120,12 +121,16 @@ public class FlinkSinkUtil {
                     //TODO 给占位符进行赋值. 需要参考 sql 语句的拼写
                     //insert into abc(stt,edt,source,keyword,keyword_count,ts) values(?,?,?,?,?,?)
                     Class<?> tClass = t.getClass();
+                    //
                     Field[] fields = tClass.getDeclaredFields();
                     try {
-                        for (int i = 0; i < fields.length; i++) {
+                        for (int i = 0, position = 1; i < fields.length; i++) {
                             Field field = fields[i];
-                            field.setAccessible(true);// 给这个属性设置访问权限
-                            ps.setObject(i + 1, field.get(t));
+                            NoNeedSink noNeedSink = field.getAnnotation(NoNeedSink.class);
+                            if (noNeedSink == null) {
+                                field.setAccessible(true);// 给这个属性设置访问权限
+                                ps.setObject(position++, field.get(t));
+                            }
                         }
                     } catch (IllegalAccessException e) {
                         throw new RuntimeException(e);

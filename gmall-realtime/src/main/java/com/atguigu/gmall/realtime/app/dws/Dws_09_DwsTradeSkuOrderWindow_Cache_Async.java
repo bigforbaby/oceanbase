@@ -7,6 +7,7 @@ import com.atguigu.gmall.realtime.bean.TradeSkuOrderBean;
 import com.atguigu.gmall.realtime.common.Constant;
 import com.atguigu.gmall.realtime.function.DimAsyncFunction;
 import com.atguigu.gmall.realtime.util.AtguiguUtil;
+import com.atguigu.gmall.realtime.util.FlinkSinkUtil;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ValueState;
@@ -54,12 +55,15 @@ public class Dws_09_DwsTradeSkuOrderWindow_Cache_Async extends BaseAppV1 {
         SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithoutDims = windowAndAgg(beanStream);
         // 4. 补充维度信息
         SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithDims =  addDim(resultStreamWithoutDims);
-        resultStreamWithDims.print();
         // 2个优化
-        
-        
-        
         // 5. 写出到 clickhouse 中
+        writeToClickHouse(resultStreamWithDims);
+        
+        
+    }
+    
+    private void writeToClickHouse(SingleOutputStreamOperator<TradeSkuOrderBean> resultStreamWithDims) {
+        resultStreamWithDims.addSink(FlinkSinkUtil.getClickHouseSink("dws_trade_sku_order_window", TradeSkuOrderBean.class));
     }
     
     private SingleOutputStreamOperator<TradeSkuOrderBean> addDim(SingleOutputStreamOperator<TradeSkuOrderBean> stream) {
@@ -353,6 +357,29 @@ public class Dws_09_DwsTradeSkuOrderWindow_Cache_Async extends BaseAppV1 {
     }
 }
 /*
+异步超时,由于其他原因导致的超时.
+1. 检查用到的集群是否正常开启
+        hdfs  redis  hbase  kafka  maxwell
+        
+        hdfs出问题, 删除一些. hdfs 进入安全模式. 先退出安全模式
+        hbase 出问题
+            1. 删除 hdfs 下的 hbase 目录
+            2. zk 下的 /hbase 节点
+        kafka 出问题:
+            1. 删除 $kafka_home/logs/ 3台一起删除
+            2. zk 下的 /kafka
+        maxwell 起不来: 删除 mysql 数据库中 maxwell 数据库
+  
+2. 检测 phoenix 中 6 张维度表是否都在
+    dim_sku_info ......
+    
+    检测数据是否都有
+
+3. 检测代码, 传递 id 的时候, 是否传错
+
+4. 找我
+
+-----
 通过网络, 网络传输时间占比比较大
 
 以一个并行度为例
