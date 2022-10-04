@@ -43,7 +43,6 @@ public class SugarController {
         return result.toJSONString();
     }
     
-    
     @RequestMapping("/sugar/gmv/spu")
     public String gmvBySpu(Integer date) {
         // 如果前端没有传递日期, 则表示要查询的是今天
@@ -239,7 +238,6 @@ public class SugarController {
             data.add(obj);
         }
         
-    
         result.put("data", data);
         return result.toJSONString();
     }
