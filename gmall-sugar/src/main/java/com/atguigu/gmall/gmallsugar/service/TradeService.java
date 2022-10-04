@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.service;
 
+import com.atguigu.gmall.gmallsugar.bean.Province;
 import com.atguigu.gmall.gmallsugar.bean.Spu;
 import com.atguigu.gmall.gmallsugar.bean.Tm;
 
@@ -12,4 +13,6 @@ public interface TradeService {
     List<Spu> gmvBySpu(int date);
     
     List<Tm> gmvByTm(int date);
+    
+    List<Province> statsByProvince(int date);
 }

@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.service;
 
+import com.atguigu.gmall.gmallsugar.bean.Province;
 import com.atguigu.gmall.gmallsugar.bean.Spu;
 import com.atguigu.gmall.gmallsugar.bean.Tm;
 import com.atguigu.gmall.gmallsugar.mapper.TradeMapper;
@@ -28,6 +29,11 @@ public class TradeServiceImpl implements TradeService {
     @Override
     public List<Tm> gmvByTm(int date) {
         return tradeMapper.gmvByTm(date);
+    }
+    
+    @Override
+    public List<Province> statsByProvince(int date) {
+        return tradeMapper.statsByProvince(date);
     }
     
 }

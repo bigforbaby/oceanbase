@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.mapper;
 
+import com.atguigu.gmall.gmallsugar.bean.Province;
 import com.atguigu.gmall.gmallsugar.bean.Spu;
 import com.atguigu.gmall.gmallsugar.bean.Tm;
 import org.apache.ibatis.annotations.Select;
@@ -30,4 +31,14 @@ public interface TradeMapper {
         "WHERE toYYYYMMDD(stt) = #{date}\n" +
         "GROUP BY trademark_name")
     List<Tm> gmvByTm(int date);
+    
+    
+    @Select("SELECT\n" +
+        "    province_name,\n" +
+        "    sum(order_amount) AS order_amount,\n" +
+        "    sum(order_count) AS order_count\n" +
+        "FROM dws_trade_province_order_window\n" +
+        "WHERE toYYYYMMDD(stt) = #{date}\n" +
+        "GROUP BY province_name")
+    List<Province> statsByProvince(int date);
 }

@@ -2,6 +2,7 @@ package com.atguigu.gmall.gmallsugar.controller;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.atguigu.gmall.gmallsugar.bean.Province;
 import com.atguigu.gmall.gmallsugar.bean.Spu;
 import com.atguigu.gmall.gmallsugar.bean.Tm;
 import com.atguigu.gmall.gmallsugar.bean.Traffic;
@@ -174,4 +175,70 @@ public class SugarController {
         result.put("data", data);
         return result.toJSONString();
     }
+    
+    @RequestMapping("/sugar/trade/province")
+    public String province(Integer date) {
+        // 如果前端没有传递日期, 则表示要查询的是今天
+        if (date == null) {
+            date = Integer.valueOf(new SimpleDateFormat("yyyMMdd").format(new Date()));
+        }
+    
+        List<Province> list = tradeService.statsByProvince(date);
+    
+        JSONObject result = new JSONObject();
+        result.put("status", 0);
+        result.put("msg", "");
+        
+        JSONObject data = new JSONObject();
+    
+        JSONArray mapData = new JSONArray();
+        for (Province province : list) {
+            JSONObject obj = new JSONObject();
+            obj.put("name", province.getProvince_name());
+            obj.put("value", province.getOrder_amount());
+    
+            JSONArray tooltipValues = new JSONArray();
+            tooltipValues.add(province.getOrder_count());
+            obj.put("tooltipValues", tooltipValues);
+            
+            mapData.add(obj);
+        }
+        data.put("mapData", mapData);
+    
+        data.put("valueName", "订单金额");
+    
+        JSONArray tooltipNames = new JSONArray();
+        tooltipNames.add("订单数");
+        data.put("tooltipNames", tooltipNames);
+        JSONArray tooltipUnits = new JSONArray();
+        tooltipUnits.add("个");
+        data.put("tooltipUnits", tooltipUnits);
+        
+        result.put("data", data);
+        return result.toJSONString();
+    }
 }
+/*
+{
+  "status": 0,
+  "msg": "",
+  "data": {
+    "mapData": [
+      {
+        "name": "北京",
+        "value": 44.44,
+        "tooltipValues": [
+          100
+        ]
+      }
+    ],
+    "valueName": "订单金额",
+    "tooltipNames": [
+      "订单数"
+    ],
+    "tooltipUnits": [
+      "个"
+    ]
+  }
+}
+ */
