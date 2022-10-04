@@ -31,7 +31,7 @@ public class Dws_10_DwsTradeProvinceOrderWindow extends BaseAppV1 {
     public static void main(String[] args) {
         new Dws_10_DwsTradeProvinceOrderWindow().init(
             4010,
-            2,
+            1,
             "Dws_10_DwsTradeProvinceOrderWindow",
             Constant.TOPIC_ODS_DB
         );
@@ -54,6 +54,7 @@ public class Dws_10_DwsTradeProvinceOrderWindow extends BaseAppV1 {
             .filter(obj -> "gmall2022".equals(obj.getString("database"))
                 && "order_info".equals(obj.getString("table"))
                 && "insert".equals(obj.getString("type")))
+            .rebalance()
             .map(obj -> {
                 JSONObject data = obj.getJSONObject("data");
                 System.out.println(data.getString("create_time") + "   " + AtguiguUtil.dateTimeToTs(data.getString("create_time")));
@@ -68,7 +69,7 @@ public class Dws_10_DwsTradeProvinceOrderWindow extends BaseAppV1 {
                 WatermarkStrategy
                     .<TradeProvinceOrderWindow>forBoundedOutOfOrderness(Duration.ofSeconds(3))
                     .withTimestampAssigner((bean, ts) -> bean.getTs())
-                    .withIdleness(Duration.ofSeconds(10))
+//                    .withIdleness(Duration.ofSeconds(10))
             )
             .keyBy(TradeProvinceOrderWindow::getProvinceId)
             .window(TumblingEventTimeWindows.of(Time.seconds(5)))
