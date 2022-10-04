@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.service;
 
+import com.atguigu.gmall.gmallsugar.bean.Kw;
 import com.atguigu.gmall.gmallsugar.bean.Traffic;
 import com.atguigu.gmall.gmallsugar.mapper.TrafficMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,11 @@ public class TrafficServiceImpl implements TrafficService{
     @Override
     public List<Traffic> statsTraffic(int date) {
         return trafficMapper.statsTraffic(date);
+    }
+    
+    @Override
+    public List<Kw> kw(int date) {
+        return trafficMapper.kw(date);
     }
     
 }

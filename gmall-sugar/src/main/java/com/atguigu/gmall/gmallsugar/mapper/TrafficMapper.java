@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.mapper;
 
+import com.atguigu.gmall.gmallsugar.bean.Kw;
 import com.atguigu.gmall.gmallsugar.bean.Traffic;
 import org.apache.ibatis.annotations.Select;
 
@@ -19,4 +20,12 @@ public interface TrafficMapper {
         "WHERE toYYYYMMDD(stt) = #{date}\n" +
         "GROUP BY toHour(stt)")
    List<Traffic> statsTraffic(int date);
+    
+    @Select("SELECT\n" +
+        "    keyword,\n" +
+        "    sum(keyword_count * multiIf(source = 'search', 10, source = 'order', 8, 6)) AS score\n" +
+        "FROM dws_traffic_source_keyword_page_view_window\n" +
+        "WHERE toYYYYMMDD(stt) = #{date}\n" +
+        "GROUP BY keyword")
+    List<Kw> kw(int date);
 }

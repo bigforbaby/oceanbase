@@ -2,10 +2,7 @@ package com.atguigu.gmall.gmallsugar.controller;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.atguigu.gmall.gmallsugar.bean.Province;
-import com.atguigu.gmall.gmallsugar.bean.Spu;
-import com.atguigu.gmall.gmallsugar.bean.Tm;
-import com.atguigu.gmall.gmallsugar.bean.Traffic;
+import com.atguigu.gmall.gmallsugar.bean.*;
 import com.atguigu.gmall.gmallsugar.service.TradeService;
 import com.atguigu.gmall.gmallsugar.service.TrafficService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -214,6 +211,35 @@ public class SugarController {
         tooltipUnits.add("个");
         data.put("tooltipUnits", tooltipUnits);
         
+        result.put("data", data);
+        return result.toJSONString();
+    }
+    
+    @RequestMapping("/sugar/traffic/kw")
+    public String kw(Integer date) {
+        // 如果前端没有传递日期, 则表示要查询的是今天
+        if (date == null) {
+            date = Integer.valueOf(new SimpleDateFormat("yyyMMdd").format(new Date()));
+        }
+    
+    
+        List<Kw> list = trafficService.kw(date);
+    
+        JSONObject result = new JSONObject();
+        result.put("status", 0);
+        result.put("msg", "");
+    
+        JSONArray data = new JSONArray();
+    
+        for (Kw kw : list) {
+            JSONObject obj = new JSONObject();
+            obj.put("name", kw.getKeyword());
+            obj.put("value", kw.getScore());
+    
+            data.add(obj);
+        }
+        
+    
         result.put("data", data);
         return result.toJSONString();
     }

@@ -1,5 +1,6 @@
 package com.atguigu.gmall.gmallsugar.service;
 
+import com.atguigu.gmall.gmallsugar.bean.Kw;
 import com.atguigu.gmall.gmallsugar.bean.Traffic;
 
 import java.util.List;
@@ -10,4 +11,5 @@ import java.util.List;
  */
 public interface TrafficService {
     List<Traffic> statsTraffic(int date);
+    List<Kw> kw(int date);
 }
