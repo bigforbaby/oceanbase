@@ -47,6 +47,12 @@
 			<artifactId>clickhouse-jdbc</artifactId>
 			<version>0.3.2-patch11</version>
 		</dependency>
+
+		<dependency>
+			<groupId>com.alibaba</groupId>
+			<artifactId>fastjson</artifactId>
+			<version>1.2.68</version>
+		</dependency>
 	</dependencies>
 
 	<build>
