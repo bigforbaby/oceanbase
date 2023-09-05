@@ -137,7 +137,6 @@ public class Dwd_03_DwdTradeOrderDetail extends BaseSQLApp {
                             "row_op_ts timestamp_ltz(3), " +
                             "primary key(id) NOT ENFORCED" +
                             ")" + SQLUtil.getUpsertKafkaSinkSQL(Constant.TOPIC_DWD_TRADE_ORDER_DETAIL));
-        
         // 9. 写出创建的动态表中
         result.executeInsert("dwd_trade_order_detail");
     }

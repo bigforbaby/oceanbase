@@ -48,7 +48,6 @@ public class DimApp extends BaseAppV1 {
         
         
     }
-    
     @Override
     protected void handle(StreamExecutionEnvironment env,
                           DataStreamSource<String> stream) {
@@ -66,7 +65,6 @@ public class DimApp extends BaseAppV1 {
         // 6. 根据connect之后的流的数据, 把相应的维度数据写入到Phoenix中
         writeToPhoenix(resultStream);
     }
-    
     private void writeToPhoenix(SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> stream) {
         /*
         把流中的数据写出到Phoenix中
@@ -74,14 +72,11 @@ public class DimApp extends BaseAppV1 {
         2. 能否使用jdbc sink?
             JdbcSink.sink( sql语句,  给sql中的占位符赋值,  执行参数, 连接参数)
             sql语句是固定, 那么就意味着只能把流中的数据写入到一个表中
-            
-            
             实际上, 我们这个流中有多个维度表的数据, 所以不能使用jdbc sink
         3. 自定义sink
          */
         stream.addSink(FlinkSinkUtil.getPhoenixSink());
     }
-    
     private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> filterNoNeedColumns(
         SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connectedStream) {
         return connectedStream
@@ -94,19 +89,16 @@ public class DimApp extends BaseAppV1 {
                     
                     // 遍历map集合, 删除不需要的列, op要保留
                     data.keySet().removeIf(key -> !columns.contains(key) && !"op".equals(key));
-                    
                     return t;
                 }
             });
     }
-    
     private SingleOutputStreamOperator<Tuple2<JSONObject, TableProcess>> connect(
         SingleOutputStreamOperator<JSONObject> dataStream,
         SingleOutputStreamOperator<TableProcess> tpStream) {
         // 1. 先把配置里做成广播流
         // key: mysql中表名 sourceTable
         // value: TableProcess
-        
         MapStateDescriptor<String, TableProcess> tpStateDesc = new MapStateDescriptor<>("tpState", String.class, TableProcess.class);
         BroadcastStream<TableProcess> tpBcStream = tpStream.broadcast(tpStateDesc);
         // 2. 让数据流去connect 广播流
